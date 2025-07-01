@@ -122,28 +122,7 @@ class BatteryManagementSystem:
         self.file_path = ""  # Initialize file path as instance variable
 
         # self.comms = serial_ports() # Searching for available serial ports
-        self.choose_csv()
-
-    def choose_csv(self):
-        """ Creates the initial frame for file selection. """
-
-        self.file_frame = ttk.LabelFrame(
-            text='File Selection', padding=(10, 5))
-        self.file_frame.grid(row=0, column=0, padx=10, pady=5, sticky='w')
-        # File name
-        self.file_label = ttk.Label(self.file_frame, text='CSV File:')
-        self.file_label.grid(row=0, column=0, padx=5, pady=5, sticky='w')
-        self.file_entry = ttk.Entry(self.file_frame, width=60)
-        self.file_entry.grid(row=0, column=1, padx=5, pady=5)
-        # Browse button
-        self.file_button = ttk.Button(
-            self.file_frame, text='Browse', command=self.open_file)
-        self.file_button.grid(row=1, column=2, padx=5, pady=5)
-        # Go button to create widgets after file selection
-        self.go_button = ttk.Button(
-            self.file_frame, text='Go', command=self.create_widgets)
-        self.go_button.config(state='disabled')
-        self.go_button.grid(row=0, column=2, padx=5, pady=5)
+        self.create_widgets()
 
     def open_file(self):
         """ Opens a file dialog to select a CSV file. """
@@ -154,13 +133,11 @@ class BatteryManagementSystem:
             self.file_path = file_path  # Store as instance variable
             self.file_entry.delete(0, END)
             self.file_entry.insert(0, file_path)
-            # Enable the Go button now that a file is selected
-            self.go_button.config(state='normal')
+            # Enable the Confirm Settings button now that a file is selected
+            self.confirm_button.config(state='normal')
 
     def create_widgets(self):
         """ Creates the main widgets for the application after file selection. """
-
-        self.file_frame.destroy()  # Remove the file selection frame
 
         self.notebook = ttk.Notebook(self.root)  # Notebook for tabs
         self.notebook.pack(expand=True, fill='both', padx=10,
@@ -181,7 +158,7 @@ class BatteryManagementSystem:
         # Voltage Settings Frame
         self.voltage_frame = ttk.LabelFrame(
             self.settings_tab, text='Voltage Settings', padding=(10, 5))
-        self.voltage_frame.grid(row=0, column=0, padx=10, pady=5, sticky='w')
+        self.voltage_frame.grid(row=0, column=0, padx=10, pady=5)
         # Number of rows input
         self.stack_rows_label = ttk.Label(
             self.voltage_frame, text='Number stacks in a row:')
@@ -220,7 +197,7 @@ class BatteryManagementSystem:
         # Temperature Settings Frame
         self.temp_frame = ttk.LabelFrame(
             self.settings_tab, text='Temperature Settings', padding=(10, 5))
-        self.temp_frame.grid(row=0, column=1, padx=10, pady=5, sticky='nw')
+        self.temp_frame.grid(row=0, column=1, padx=10, pady=5)
         # Number of temperature sensors input
         self.temps_label = ttk.Label(
             self.temp_frame, text='Number of temp. sensors per stack:')
@@ -243,14 +220,18 @@ class BatteryManagementSystem:
         self.OT_entry.grid(row=1, column=3, padx=5, pady=5)
 
         # File Selection Frame
-        self.file_view_frame = ttk.LabelFrame(
+        self.file_frame = ttk.LabelFrame(
             self.settings_tab, text='File Selection', padding=(10, 5))
-        self.file_view_frame.grid(row=1, column=0, padx=10, pady=5, sticky='w')
-        self.file_label = ttk.Label(self.file_view_frame, text='CSV File:')
-        self.file_label.grid(row=0, column=0, padx=5, pady=5)
-        self.file_path_label = ttk.Label(
-            self.file_view_frame, text=self.file_path)
-        self.file_path_label.grid(row=0, column=1, padx=5, pady=5)
+        self.file_frame.grid(row=1, column=1, padx=10, pady=5)
+        # File name
+        self.file_label = ttk.Label(self.file_frame, text='CSV File:')
+        self.file_label.grid(row=0, column=0, padx=5, pady=5, sticky='w')
+        self.file_entry = ttk.Entry(self.file_frame, width=60)
+        self.file_entry.grid(row=0, column=1, padx=5, pady=5)
+        # Browse button
+        self.file_button = ttk.Button(
+            self.file_frame, text='Browse', command=self.open_file)
+        self.file_button.grid(row=1, column=2, padx=5, pady=5)
 
         # Communication Settings Frame
         # self.comm_frame = ttk.LabelFrame(self.settings_tab, text='Communication Settings', padding=(10, 5))
@@ -285,12 +266,12 @@ class BatteryManagementSystem:
             OT = float(self.OT_entry.get())
             read_file(self.file_path, stack_rows, stack_cols, cells,
                       temps)  # Read the CSV file to update data
-            # Recreate widgets with new settings
             self.create_dynamic_widgets(stack_rows, stack_cols, cells, temps)
 
         # Confirm Settings Button
         self.confirm_button = ttk.Button(
             self.settings_tab, text='Confirm Settings', command=update_data)
+        self.confirm_button.config(state='disabled')  # Initially disabled until a file is selected
         self.confirm_button.grid(
             row=2, column=0, columnspan=4, padx=10, pady=5)
 
