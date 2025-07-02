@@ -8,35 +8,26 @@ import pandas as pd
 import serial
 
 # CONSTANTS
-DEFAULT_STACK_ROWS = 3  # Default number of stacks in a row
-DEFAULT_STACK_COLS = 6  # Default number of stacks in a column
-DEFAULT_CELLS = 6   # Default number of cells per stack
-DEFAULT_TEMPS = 4  # Default number of temperature sensors per stack
+DEFAULT_STACK_ROWS = 2  # Default number of stacks in a row
+DEFAULT_STACK_COLS = 4  # Default number of stacks in a column
+DEFAULT_CELLS = 12   # Default number of cells per stack
+DEFAULT_TEMPS = 6  # Default number of temperature sensors per stack
 DEFAULT_UV = 3.000  # Default undervoltage threshold
 DEFAULT_OV = 4.200  # Default overvoltage threshold
 DEFAULT_UT = 45.0   # Default under-temperature threshold
 DEFAULT_OT = 60.0   # Default over-temperature threshold
 DEFAULT_BAUD = 115200  # Default baud rate for serial communication
-TIMESTAMP_COL = 1  # Column index for timestamp
+TIMESTAMP_COL = 0  # Column index for timestamp
 LAST_CELL_DATA_COL = 181  # Last column index for cell voltage & temp data
-SOC_COL = 182
-VSBAT_COL = 183
-VSHV_COL = 184
-CURR_COL = 185
+LAST_VOLT_COL = 97
+LAST_TEMP_COL = 145
 
 # GLOBAL VARIABLES
 all_cell_voltages = []  # List to store all cell voltages
 all_cell_temps = []  # List to store all cell temperatures
-total_pack_voltage = 0.0  # Total pack voltage
-avg_cell_voltage = 0.0  # Average cell voltage
-avg_cell_temp = 0.0  # Average cell temperature
-timestamps = []
-SoC = []
-VsBat = []
-VsHV = []
-curr = []
 
 # FUNCTIONS
+
 
 def serial_ports():
     """ Lists serial port names
@@ -57,7 +48,7 @@ def serial_ports():
     return comms
 
 
-def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, SoC_col, VsBat_col, VsHV_col, curr_col):
+def read_file(file_path, stack_rows, stack_cols, cells, temps):
     """ Reads a CSV file and returns its content as a pandas DataFrame.
 
         :param file_path: Path to the CSV file.
@@ -65,45 +56,36 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     """
     indiv_cell_voltages = []  # List to store individual cell voltages
     indiv_cell_temps = []  # List to store individual cell temperatures
-    global timestamps, SoC, VsBat, VsHV, curr
+    global timestamps  # List to store timestamps
 
     # Read the CSV file, skipping the second line
     df = pd.read_csv(file_path, header=0, skiprows=[1])
 
     cols = df.columns.tolist()  # Get the list of column names
     # Store timestamps from the first column
-    timestamps = df.iloc[:, timestamp_col-1].tolist()
-    SoC = df.iloc[:, SoC_col-1].tolist()  # Store SoC data
-    VsBat = df.iloc[:, VsBat_col-1].tolist()  # Store VsBat data
-    VsHV = df.iloc[:, VsHV_col-1].tolist()  # Store VsHV data
-    curr = df.iloc[:, curr_col-1].tolist()  # Store current data
-
+    timestamps = df.iloc[:, TIMESTAMP_COL].tolist()
     new_cols = []
-    for i in range(timestamp_col, LAST_CELL_DATA_COL, 4):
+    for i in range(TIMESTAMP_COL+1, LAST_TEMP_COL, 4):
         group = cols[i:i+4]
         # Reverse the order of each group of 4 columns
         new_cols.extend(group[::-1])
-    all_cols = [cols[timestamp_col-1]] + new_cols + cols[LAST_CELL_DATA_COL+1:]
+    all_cols = [cols[TIMESTAMP_COL]] + new_cols + cols[LAST_CELL_DATA_COL+1:]
     df_new = df[all_cols]  # Creating new dataframe with reordered columns
 
     # Extracting cell voltages and temperatures from the DataFrame
-    for stack_data in range(timestamp_col, LAST_CELL_DATA_COL, cells+temps):
+    for volt_data in range(TIMESTAMP_COL+1, LAST_VOLT_COL, cells):
         for cell in range(cells):
             indiv_cell_voltages.append(
-                df_new.iloc[:, stack_data + cell].tolist())
+                df_new.iloc[:, volt_data + cell].tolist())
         all_cell_voltages.append(indiv_cell_voltages)
         indiv_cell_voltages = []  # Reset for the next stack
+    print("---------------")
+    for temp_data in range(LAST_VOLT_COL, LAST_TEMP_COL, temps):
         for temp in range(temps):
             indiv_cell_temps.append(
-                df_new.iloc[:, stack_data + cells + temp].tolist())
+                df_new.iloc[:, temp_data + temp].tolist())
         all_cell_temps.append(indiv_cell_temps)
         indiv_cell_temps = []
-
-    # Converting temperature values to Celsius
-    for i in range(len(all_cell_temps)):
-        for j in range(len(all_cell_temps[i])):
-            all_cell_temps[i][j] = [calc_temp(temp) for temp in all_cell_temps[i][j]]
-
 
 def plot_data(x, y, x_label, y_label, title):
     """ Plots the data using matplotlib. 
@@ -129,21 +111,6 @@ def plot_data(x, y, x_label, y_label, title):
     plt.grid(True)
     plt.show()
 
-def calc_temp (raw_temp):
-    """ Calculates the temperature in Celsius from the raw temperature value.
-
-        :param raw_temp: Raw temperature value.
-        :returns: Temperature in Celsius.
-    """
-    r_inf = 10000 * np.exp(-3435 / 298.15)
-    R = raw_temp / (3.0 - (raw_temp * 0.0001))  # Calculate resistance
-    return ((3435 / np.log(R / r_inf)) - 273.15)  # Convert to Celsius
-
-# uint16_t tempCalc(uint8_t ic, uint8_t temp) {
-#   vRef2 = BMS_IC[ic].aux.a_codes[5] * 0.0001;
-#   R = BMS_IC[ic].aux.a_codes[temp] / (vRef2 - (BMS_IC[ic].aux.a_codes[temp] * 0.0001));
-#   return ((3435 / log(R / r_inf)) - 273.15) * 100;
-# }
 
 class BatteryManagementSystem:
     def __init__(self, root):
@@ -153,12 +120,24 @@ class BatteryManagementSystem:
         """
         self.root = root
         self.root.title("BMS")
+        self.root.geometry("1400x900")
 
         self.file_path = ""  # Initialize file path as instance variable
 
         # self.comms = serial_ports() # Searching for available serial ports
         self.create_widgets()
-        self.root.geometry("1350x700")
+
+    def open_file(self):
+        """ Opens a file dialog to select a CSV file. """
+
+        file_path = filedialog.askopenfilename(
+            filetypes=[("CSV files", "*.csv")])
+        if file_path:
+            self.file_path = file_path  # Store as instance variable
+            self.file_entry.delete(0, END)
+            self.file_entry.insert(0, file_path)
+            # Enable the Confirm Settings button now that a file is selected
+            self.confirm_button.config(state='normal')
 
     def create_widgets(self):
         """ Creates the main widgets for the application after file selection. """
@@ -172,18 +151,6 @@ class BatteryManagementSystem:
         self.create_overview_tab()
         self.create_voltages_tab()
         self.create_temps_tab()
-
-    def open_file(self):
-        """ Opens a file dialog to select a CSV file. """
-
-        file_path = filedialog.askopenfilename(
-            filetypes=[("CSV files", "*.csv")])
-        if file_path:
-            self.file_path = file_path  # Store as instance variable
-            self.file_entry.delete(0, END)
-            self.file_entry.insert(0, file_path)
-            # Enable the Confirm Settings button now that a file is selected
-            self.confirm_button.config(state='normal')
 
     def create_settings_tab(self):
         """ Creates the settings tab with input fields for voltage and temperature settings. """
@@ -268,40 +235,6 @@ class BatteryManagementSystem:
         self.file_button = ttk.Button(
             self.file_frame, text='Browse', command=self.open_file)
         self.file_button.grid(row=0, column=2, padx=5, pady=5)
-        # Column entries
-        self.columns_label = ttk.Label(self.file_frame, text='Data Columns:')
-        self.columns_label.grid(row=1, column=0, padx=5, pady=5, sticky='w')
-        # Timestamps
-        self.timestamps_label = ttk.Label(
-            self.file_frame, text='Timestamps:')
-        self.timestamps_label.grid(row=2, column=0, padx=5, pady=5, sticky='w')
-        self.timestamps_entry = ttk.Entry(self.file_frame, width=5)
-        self.timestamps_entry.insert(0, TIMESTAMP_COL)
-        self.timestamps_entry.grid(row=2, column=1, padx=5, pady=5)
-        # SoC
-        self.SoC_label = ttk.Label(self.file_frame, text='SoC:')
-        self.SoC_label.grid(row=3, column=0, padx=5, pady=5, sticky='w')
-        self.SoC_entry = ttk.Entry(self.file_frame, width=5)
-        self.SoC_entry.insert(0, SOC_COL)
-        self.SoC_entry.grid(row=3, column=1, padx=5, pady=5)
-        # VsBat
-        self.VsBat_label = ttk.Label(self.file_frame, text='VsBat:')
-        self.VsBat_label.grid(row=2, column=2, padx=5, pady=5, sticky='w')
-        self.VsBat_entry = ttk.Entry(self.file_frame, width=5)
-        self.VsBat_entry.insert(0, VSBAT_COL)
-        self.VsBat_entry.grid(row=2, column=3, padx=5, pady=5)
-        # VsHV
-        self.VsHV_label = ttk.Label(self.file_frame, text='VsHV:')
-        self.VsHV_label.grid(row=3, column=2, padx=5, pady=5, sticky='w')
-        self.VsHV_entry = ttk.Entry(self.file_frame, width=5)
-        self.VsHV_entry.insert(0, VSHV_COL)
-        self.VsHV_entry.grid(row=3, column=3, padx=5, pady=5)
-        # Current
-        self.current_label = ttk.Label(self.file_frame, text='Current:')
-        self.current_label.grid(row=4, column=0, padx=5, pady=5, sticky='w')
-        self.current_entry = ttk.Entry(self.file_frame, width=5)
-        self.current_entry.insert(0, CURR_COL)
-        self.current_entry.grid(row=4, column=1, padx=5, pady=5)
 
         # Communication Settings Frame
         # self.comm_frame = ttk.LabelFrame(self.settings_tab, text='Communication Settings', padding=(10, 5))
@@ -334,24 +267,16 @@ class BatteryManagementSystem:
             OV = float(self.OV_entry.get())
             UT = float(self.UT_entry.get())
             OT = float(self.OT_entry.get())
-            timestamp_col = int(self.timestamps_entry.get())
-            SoC_col = int(self.SoC_entry.get())
-            VsBat_col = int(self.VsBat_entry.get())
-            VsHV_col = int(self.VsHV_entry.get())
-            curr_col = int(self.current_entry.get())
-
             read_file(self.file_path, stack_rows, stack_cols, cells,
-                      # Read the CSV file to update data
-                      temps, timestamp_col, SoC_col, VsBat_col, VsHV_col, curr_col)
+                      temps)  # Read the CSV file to update data
             self.create_dynamic_widgets(stack_rows, stack_cols, cells, temps)
 
         # Confirm Settings Button
         self.confirm_button = ttk.Button(
-            self.settings_tab, text='Confirm & Launch', command=update_data)
-        # Initially disabled until a file is selected
-        self.confirm_button.config(state='disabled')
+            self.settings_tab, text='Confirm Settings', command=update_data)
+        self.confirm_button.config(state='disabled')  # Initially disabled until a file is selected
         self.confirm_button.grid(
-            row=2, column=0, padx=10, pady=5)
+            row=2, column=0, columnspan=4, padx=10, pady=5)
 
     def create_temps_tab(self):
         """ Creates the temperatures tab with a scrollable view for temperature data. """
@@ -433,6 +358,28 @@ class BatteryManagementSystem:
         self.overview_frame = ttk.Frame(self.overview_tab, padding=(10, 5))
         self.overview_frame.pack(padx=10, pady=5, fill=BOTH, expand=True)
 
+        self.TPV_frame = ttk.LabelFrame(
+            self.overview_frame, text='Total Pack Voltage', padding=(10, 5))
+        self.TPV_frame.grid(row=0, column=0, padx=10, pady=5, sticky='w')
+        self.TPV_value = ttk.Label(self.TPV_frame, text='0.00')
+        self.TPV_value.grid(row=0, column=0, padx=5, pady=5)
+        self.TPV_unit = ttk.Label(self.TPV_frame, text='V')
+        self.TPV_unit.grid(row=0, column=1, padx=5, pady=5)
+        self.ACV_frame = ttk.LabelFrame(
+            self.overview_frame, text='Average Cell Voltage', padding=(10, 5))
+        self.ACV_frame.grid(row=0, column=1, padx=10, pady=5)
+        self.ACV_value = ttk.Label(self.ACV_frame, text='0.00')
+        self.ACV_value.grid(row=0, column=0, padx=5, pady=5)
+        self.ACV_unit = ttk.Label(self.ACV_frame, text='V')
+        self.ACV_unit.grid(row=0, column=1, padx=5, pady=5)
+        self.ACT_frame = ttk.LabelFrame(
+            self.overview_frame, text='Average Cell Temperature', padding=(10, 5))
+        self.ACT_frame.grid(row=0, column=2, padx=10, pady=5)
+        self.ACT_value = ttk.Label(self.ACT_frame, text='0.00')
+        self.ACT_value.grid(row=0, column=0, padx=5, pady=5)
+        self.ACT_unit = ttk.Label(self.ACT_frame, text='°C')
+        self.ACT_unit.grid(row=0, column=1, padx=5, pady=5)
+
     def create_dynamic_widgets(self, stack_rows, stack_cols, cells, temps):
         """ Creates dynamic widgets for voltages and temperatures based on user input.
 
@@ -441,15 +388,6 @@ class BatteryManagementSystem:
             :param cells: Number of cells per stack.
             :param temps: Number of temperature sensors per stack.
         """
-        global total_pack_voltage, avg_cell_voltage, avg_cell_temp, SoC, VsBat, VsHV, curr
-        total_pack_voltage = 0.0  # Reset total pack voltage
-
-        # Clear previous widgets in voltages and temperatures frames
-        for widget in self.voltages_frame.winfo_children():
-            widget.destroy()
-        for widget in self.temps_frame.winfo_children():
-            widget.destroy()
-
         # Creating voltage widget grid
         for row in range(stack_rows):
             for col in range(stack_cols):
@@ -461,23 +399,20 @@ class BatteryManagementSystem:
 
                 for cell in range(cells):
                     # Cell voltages with plot buttons
-                    cell_button = ttk.Button(stack_frame, text=f'Cell {cell + 1}', command=lambda s=stack_index, c=cell: plot_data(
-                        timestamps, all_cell_voltages[s][c], 'Time (s)', 'Voltage (V)', f'Stack {s + 1} Cell {c + 1} Voltage'))
-                    cell_button.grid(row=cell, column=0, padx=5, pady=5)
-                    cell_voltage = round(
-                        np.mean(all_cell_voltages[stack_index][cell]), 4)
-                    total_pack_voltage += cell_voltage
-                    cell_voltage_label = ttk.Label(
-                        stack_frame, text=cell_voltage)
-                    cell_voltage_label.grid(row=cell, column=1, padx=5, pady=5)
-                    voltage_unit = ttk.Label(stack_frame, text='V')
-                    voltage_unit.grid(row=cell, column=2, padx=5, pady=5)
-
+                    cell_label = ttk.Label(
+                        stack_frame, text=f'Cell {cell + 1}')
+                    cell_label.grid(row=cell, column=0, padx=5, pady=5)
+                    cell_voltage = ttk.Label(stack_frame, text=str(round(
+                        all_cell_voltages[stack_index][cell][0], 4)))
+                    cell_voltage.grid(row=cell, column=1, padx=5, pady=5)
+                    cell_plot_button = ttk.Button(stack_frame, text='Plot', command=lambda s=stack_index, c=cell: plot_data(
+                        timestamps, all_cell_voltages[s][c], 'Time', 'Voltage', f'Stack {s + 1} Cell {c + 1} Voltage'))
+                    cell_plot_button.grid(row=cell, column=2, padx=5, pady=5)
                 # Plot all button
                 stack_v_plot_button = ttk.Button(stack_frame, text='Plot All', command=lambda s=stack_index: plot_data(
-                    timestamps, all_cell_voltages[s], 'Time (s)', 'Voltage (V)', f'Stack {s + 1} Voltages'))
+                    timestamps, all_cell_voltages[s], 'Time', 'Voltage', f'Stack {s + 1} Voltages'))
                 stack_v_plot_button.grid(
-                    row=cells, column=0, columnspan=2, padx=5, pady=5)
+                    row=cells, column=0, columnspan=3, padx=5, pady=5)
 
         # Creating temperature widget grid
         for row in range(stack_rows):
@@ -490,76 +425,20 @@ class BatteryManagementSystem:
 
                 for temp in range(temps):
                     # Cell temperatures with plot buttons
-                    temp_button = ttk.Button(
-                        stack_frame, text=f'Temp. {temp + 1}', command=lambda s=stack_index, t=temp: plot_data(
-                            timestamps, all_cell_temps[s][t], 'Time (s)', 'Temperature (°C)', f'Stack {s + 1} Temperature {t + 1}'))
-                    temp_button.grid(row=temp, column=0, padx=5, pady=5)
-                    temp_value = ttk.Label(stack_frame, text=round(
-                        np.mean(all_cell_temps[stack_index][temp]), 4))
+                    temp_label = ttk.Label(
+                        stack_frame, text=f'Temp. {temp + 1}')
+                    temp_label.grid(row=temp, column=0, padx=5, pady=5)
+                    temp_value = ttk.Label(stack_frame, text=str(
+                        round(all_cell_temps[stack_index][temp][0], 4)) if all_cell_temps else '0.00')
                     temp_value.grid(row=temp, column=1, padx=5, pady=5)
-                    temp_unit = ttk.Label(stack_frame, text='°C')
-                    temp_unit.grid(row=temp, column=2, padx=5, pady=5)
-                    # temp_plot_button = ttk.Button(stack_frame, text='Plot', command=lambda s=stack_index, t=temp: plot_data(
-                    #     timestamps, all_cell_temps[s][t], 'Time (s)', 'Temperature (°C)', f'Stack {s + 1} Temperature {t + 1}'))
-                    # temp_plot_button.grid(row=temp, column=2, padx=5, pady=5)
+                    temp_plot_button = ttk.Button(stack_frame, text='Plot', command=lambda s=stack_index, t=temp: plot_data(
+                        timestamps, all_cell_temps[s][t], 'Time', 'Temperature', f'Stack {s + 1} Temperature {t + 1}'))
+                    temp_plot_button.grid(row=temp, column=2, padx=5, pady=5)
                 # Plot all button
                 stack_t_plot_button = ttk.Button(stack_frame, text='Plot All', command=lambda s=stack_index: plot_data(
-                    timestamps, all_cell_temps[s], 'Time (s)', 'Temperature (°C)', f'Stack {s + 1} Temperatures'))
+                    timestamps, all_cell_temps[s], 'Time', 'Temperature', f'Stack {s + 1} Temperatures'))
                 stack_t_plot_button.grid(
                     row=temps, column=0, columnspan=3, padx=5, pady=5)
-
-        # Filling overview tab
-
-        # Total pack voltage
-        self.TPV_frame = ttk.LabelFrame(
-            self.overview_frame, text='Total Pack Voltage', padding=(10, 5))
-        self.TPV_frame.grid(row=0, column=0, padx=10, pady=5, sticky='w')
-        self.TPV_value = ttk.Label(
-            self.TPV_frame, text=round(total_pack_voltage, 4))
-        self.TPV_value.grid(row=0, column=0, padx=5, pady=5)
-        self.TPV_unit = ttk.Label(self.TPV_frame, text='V')
-        self.TPV_unit.grid(row=0, column=1, padx=5, pady=5)
-        # Average cell voltage and temperature
-        self.ACV_frame = ttk.LabelFrame(
-            self.overview_frame, text='Average Cell Voltage', padding=(10, 5))
-        self.ACV_frame.grid(row=0, column=1, padx=10, pady=5)
-        # Calculating average voltage of each stack, then averaging those to get final average
-        avg_cell_voltage = np.mean([np.mean(voltage)
-                                   for voltage in all_cell_voltages])
-        self.ACV_value = ttk.Label(
-            self.ACV_frame, text=round(avg_cell_voltage, 4))
-        self.ACV_value.grid(row=0, column=0, padx=5, pady=5)
-        self.ACV_unit = ttk.Label(self.ACV_frame, text='V')
-        self.ACV_unit.grid(row=0, column=1, padx=5, pady=5)
-        self.ACT_frame = ttk.LabelFrame(
-            self.overview_frame, text='Average Cell Temperature', padding=(10, 5))
-        self.ACT_frame.grid(row=0, column=2, padx=10, pady=5)
-        avg_cell_temp = np.mean([np.mean(temp) for temp in all_cell_temps])
-        self.ACT_value = ttk.Label(
-            self.ACT_frame, text=round(avg_cell_temp, 4))
-        self.ACT_value.grid(row=0, column=0, padx=5, pady=5)
-        self.ACT_unit = ttk.Label(self.ACT_frame, text='°C')
-        self.ACT_unit.grid(row=0, column=1, padx=5, pady=5)
-        # SoC
-        self.SoC_button = ttk.Button(
-            self.overview_frame, text='Plot SoC', command=lambda: plot_data(
-                timestamps, SoC, 'Time (s)', 'State of Charge (%)', 'State of Charge'))
-        self.SoC_button.grid(row=1, column=0, padx=10, pady=5)
-        # VsBat
-        self.VsBat_button = ttk.Button(
-            self.overview_frame, text='Plot VsBat', command=lambda: plot_data(
-                timestamps, VsBat, 'Time (s)', 'VsBat (V)', 'VsBat'))
-        self.VsBat_button.grid(row=1, column=1, padx=10, pady=5)
-        # VsHV
-        self.VsHV_button = ttk.Button(
-            self.overview_frame, text='Plot VsHV', command=lambda: plot_data(
-                timestamps, VsHV, 'Time (s)', 'VsHV (V)', 'VsHV'))
-        self.VsHV_button.grid(row=1, column=2, padx=10, pady=5)
-        # Current
-        self.curr_button = ttk.Button(
-            self.overview_frame, text='Plot Current', command=lambda: plot_data(
-                timestamps, curr, 'Time (s)', 'Current (A)', 'Current'))
-        self.curr_button.grid(row=1, column=3, padx=10, pady=5)
 
 
 def main():
