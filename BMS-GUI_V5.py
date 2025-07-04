@@ -41,8 +41,8 @@ VsBat = []
 VsHV = []
 curr = []
 red = '#FF0000'  # Red color for over-limit value
-green = '#00FF00'  # Green color for normal value
-blue = '#0000FF'  # Blue color for under-limit value
+green = "#209D20"  # Green color for normal value
+blue = '#3333EC'  # Blue color for under-limit value
 
 # FUNCTIONS
 
@@ -480,7 +480,7 @@ class BatteryManagementSystem:
         self.overview_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.overview_tab, text='Overview')
 
-        # --- Add vertical scrollbar using Canvas ---
+        # --- Add vertical and horizontal scrollbars using Canvas ---
         self.overview_view_frame = ttk.Frame(
             self.overview_tab, padding=(10, 5))
         self.overview_view_frame.pack(padx=10, pady=5, fill=BOTH, expand=True)
@@ -494,6 +494,12 @@ class BatteryManagementSystem:
             self.overview_view_frame, orient=VERTICAL, command=self.o_canvas.yview)
         self.o_scrollbar.pack(side=RIGHT, fill=Y)
         self.o_canvas.configure(yscrollcommand=self.o_scrollbar.set)
+
+        # Horizontal scrollbar
+        self.o_hscrollbar = ttk.Scrollbar(
+            self.overview_view_frame, orient=HORIZONTAL, command=self.o_canvas.xview)
+        self.o_hscrollbar.pack(side=BOTTOM, fill=X)
+        self.o_canvas.configure(xscrollcommand=self.o_hscrollbar.set)
 
         # Frame inside canvas for actual content
         self.overview_frame = ttk.Frame(self.o_canvas, padding=(10, 5))
@@ -587,45 +593,35 @@ class BatteryManagementSystem:
         # Filling overview tab
         # Plots
         self.plot_frame = ttk.Frame(
-            self.overview_frame, padding=(10, 5))
-        self.plot_frame.grid(row=0, column=0,
-                             padx=10, pady=5)
+            self.overview_frame, padding=(2, 2))
+        self.plot_frame.grid(row=0, column=0)
+        def overview_plots(ro, col, data, title, unit):
+            """ Creates a plot in the overview tab.
+
+                :param ro: Row index for the plot.
+                :param col: Column index for the plot.
+                :param data: Data to plot.
+                :param title: Title for the plot.
+            """
+            fig, ax = plt.subplots(figsize=(6, 4.2))
+            canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
+            canvas.get_tk_widget().grid(row=ro, column=col, padx=2, pady=2)
+            ax.plot(timestamps, data)
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel(f'{title} ({unit})')
+            ax.set_title(title)
+            mplcursors.cursor(hover=True)
+            canvas.draw()
+            plt.close(fig)
+            
         # SoC
-        fig, ax = plt.subplots(figsize=(4.5, 3.5))
-        canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
-        canvas.get_tk_widget().grid(row=0, column=0, padx=10, pady=5)
-        ax.plot(timestamps, SoC, label='SoC')
-        ax.legend()
-        mplcursors.cursor(hover=True)
-        canvas.draw()
-        plt.close(fig)
+        overview_plots(0, 0, SoC, 'State of Charge', '%')
         # VsBat
-        fig, ax = plt.subplots(figsize=(4.5, 3.5))
-        canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
-        canvas.get_tk_widget().grid(row=0, column=1, padx=10, pady=5)
-        ax.plot(timestamps, VsBat, label='VsBat')
-        ax.legend()
-        mplcursors.cursor(hover=True)
-        canvas.draw()
-        plt.close(fig)
+        overview_plots(0, 1, VsBat, 'VsBat', 'V')
         # VsHV
-        fig, ax = plt.subplots(figsize=(4.5, 3.5))
-        canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
-        canvas.get_tk_widget().grid(row=1, column=0, padx=10, pady=5)
-        ax.plot(timestamps, VsHV, label='VsHV')
-        ax.legend()
-        mplcursors.cursor(hover=True)
-        canvas.draw()
-        plt.close(fig)
+        overview_plots(1, 0, VsHV, 'VsHV', 'V')
         # Current
-        fig, ax = plt.subplots(figsize=(4.5, 3.5))
-        canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
-        canvas.get_tk_widget().grid(row=1, column=1, padx=10, pady=5)
-        ax.plot(timestamps, curr, label='Current')
-        ax.legend()
-        mplcursors.cursor(hover=True)
-        canvas.draw()
-        plt.close(fig)
+        overview_plots(1, 1, curr, 'Current', 'A')
 
         # Data & Stacks frame
         self.d_n_s_frame = ttk.Frame(self.overview_frame, padding=(10, 5))
@@ -645,7 +641,7 @@ class BatteryManagementSystem:
         self.TPV_unit.grid(row=0, column=2, padx=5, pady=5, sticky='w')
         # Average cell voltage
         self.ACV_label = ttk.Label(
-            self.data_frame, text='Average Cell Voltage:')
+            self.data_frame, text='Avg. Cell Voltage:')
         self.ACV_label.grid(row=1, column=0, padx=5, pady=5, sticky='e')
         fullpack_avg_cell_voltage = np.mean([np.mean(voltage)
                                    for voltage in all_cell_voltages])
@@ -656,7 +652,7 @@ class BatteryManagementSystem:
         self.ACV_unit.grid(row=1, column=2, padx=5, pady=5)
         # Average cell temperature
         self.ACT_label = ttk.Label(
-            self.data_frame, text='Average Cell Temperature:')
+            self.data_frame, text='Avg. Cell Temp.:')
         self.ACT_label.grid(row=2, column=0, padx=10, pady=5, sticky='e')
         fullpack_avg_cell_temp = np.mean([np.mean(temp) for temp in all_cell_temps])
         self.ACT_value = ttk.Label(
