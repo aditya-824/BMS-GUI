@@ -17,10 +17,10 @@ DEFAULT_STACK_ROWS = 3  # Default number of stacks in a row
 DEFAULT_STACK_COLS = 6  # Default number of stacks in a column
 DEFAULT_CELLS = 6   # Default number of cells per stack
 DEFAULT_TEMPS = 4  # Default number of temperature sensors per stack
-DEFAULT_UV = 3.000  # Default undervoltage threshold
-DEFAULT_OV = 4.200  # Default overvoltage threshold
-DEFAULT_UT = 45.0   # Default under-temperature threshold
-DEFAULT_OT = 60.0   # Default over-temperature threshold
+DEFAULT_UV = 3.000  # Default undervoltage threshold, in volts
+DEFAULT_OV = 4.200  # Default overvoltage threshold, in volts
+DEFAULT_UT = 45.0   # Default under-temperature threshold, in degrees Celsius
+DEFAULT_OT = 60.0   # Default over-temperature threshold, in degrees Celsius
 DEFAULT_BAUD = 115200  # Default baud rate for serial communication
 TIMESTAMP_COL = 1  # Column index for timestamp
 LAST_CELL_DATA_COL = 181  # Last column index for cell voltage & temp data
@@ -33,13 +33,16 @@ CURR_COL = 185
 all_cell_voltages = []  # List to store all cell voltages
 all_cell_temps = []  # List to store all cell temperatures
 total_pack_voltage = 0.0  # Total pack voltage
-avg_cell_voltage = 0.0  # Average cell voltage
-avg_cell_temp = 0.0  # Average cell temperature
+# avg_cell_voltage = 0.0  # Average cell voltage
+# avg_cell_temp = 0.0  # Average cell temperature
 timestamps = []
 SoC = []
 VsBat = []
 VsHV = []
 curr = []
+red = '#FF0000'  # Red color for over-limit value
+green = '#00FF00'  # Green color for normal value
+blue = '#0000FF'  # Blue color for under-limit value
 
 # FUNCTIONS
 
@@ -92,6 +95,7 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     all_cols = [cols[timestamp_col-1]] + new_cols + cols[LAST_CELL_DATA_COL+1:]
     df_new = df[all_cols]  # Creating new dataframe with reordered columns
 
+    all_cell_temps.clear()  # Clear previous temperature data
     # Extracting cell voltages and temperatures from the DataFrame
     for stack_data in range(timestamp_col, LAST_CELL_DATA_COL, cells+temps):
         for cell in range(cells):
@@ -170,6 +174,20 @@ def calc_temp(raw_temp):
     R = raw_temp / (3.0 - (raw_temp * 0.0001))  # Calculate resistance
     return ((3435 / np.log(R / r_inf)) - 273.15)  # Convert to Celsius
 
+def check_status(value, lower, upper):
+    """ Checks the status of a value against lower and upper limits.
+
+        :param value: The value to check.
+        :param lower: The lower limit.
+        :param upper: The upper limit.
+        :returns: A string indicating the colour in hex format
+    """
+    if value < lower:
+        return blue
+    elif value > upper:
+        return red
+    else:
+        return green
 
 class BatteryManagementSystem:
     def __init__(self, root):
@@ -375,7 +393,7 @@ class BatteryManagementSystem:
             read_file(self.file_path, stack_rows, stack_cols, cells,
                       # Read the CSV file to update data
                       temps, timestamp_col, SoC_col, VsBat_col, VsHV_col, curr_col)
-            self.create_dynamic_widgets(stack_rows, stack_cols, cells, temps)
+            self.create_dynamic_widgets(stack_rows, stack_cols, cells, temps, UV, OV, UT, OT)
 
         # Confirm Settings Button
         self.confirm_button = ttk.Button(
@@ -487,7 +505,7 @@ class BatteryManagementSystem:
             self.o_canvas.configure(scrollregion=self.o_canvas.bbox('all'))
         self.overview_frame.bind('<Configure>', on_frame_configure)
 
-    def create_dynamic_widgets(self, stack_rows, stack_cols, cells, temps):
+    def create_dynamic_widgets(self, stack_rows, stack_cols, cells, temps, UV, OV, UT, OT):
         """ Creates dynamic widgets for voltages and temperatures based on user input.
 
             :param stack_rows: Number of rows of stacks.
@@ -495,7 +513,7 @@ class BatteryManagementSystem:
             :param cells: Number of cells per stack.
             :param temps: Number of temperature sensors per stack.
         """
-        global total_pack_voltage, avg_cell_voltage, avg_cell_temp, SoC, VsBat, VsHV, curr
+        global total_pack_voltage, SoC, VsBat, VsHV, curr, red, blue, green
         total_pack_voltage = 0.0  # Reset total pack voltage
         avg_stack_voltages = []  # List to store average stack voltages
 
@@ -523,10 +541,9 @@ class BatteryManagementSystem:
                     avg_cell_voltage = np.mean(
                         all_cell_voltages[stack_index][cell])
                     total_stack_voltage += avg_cell_voltage
-                    cell_voltage = round(
-                        avg_cell_voltage, 4)
-                    cell_voltage_label = ttk.Label(
-                        stack_frame, text=cell_voltage)
+                    cell_voltage_label = Label(
+                        stack_frame, text=round(
+                        avg_cell_voltage, 4), fg=check_status(avg_cell_voltage, UV, OV))
                     cell_voltage_label.grid(row=cell, column=1, padx=5, pady=5)
                     voltage_unit = ttk.Label(stack_frame, text='V')
                     voltage_unit.grid(row=cell, column=2, padx=5, pady=5)
@@ -554,14 +571,13 @@ class BatteryManagementSystem:
                         stack_frame, text=f'Temp. {temp + 1}', command=lambda s=stack_index, t=temp: plot_data(
                             timestamps, all_cell_temps[s][t], 'Time (s)', 'Temperature (°C)', f'Stack {s + 1} Temperature {t + 1}', 'temps'))
                     temp_button.grid(row=temp, column=0, padx=5, pady=5)
-                    temp_value = ttk.Label(stack_frame, text=round(
-                        np.mean(all_cell_temps[stack_index][temp]), 4))
+                    avg_cell_temp = np.mean(
+                        all_cell_temps[stack_index][temp])
+                    temp_value = Label(stack_frame, text=round(
+                        avg_cell_temp, 4), fg=check_status(avg_cell_temp, UT, OT))
                     temp_value.grid(row=temp, column=1, padx=5, pady=5)
                     temp_unit = ttk.Label(stack_frame, text='°C')
                     temp_unit.grid(row=temp, column=2, padx=5, pady=5)
-                    # temp_plot_button = ttk.Button(stack_frame, text='Plot', command=lambda s=stack_index, t=temp: plot_data(
-                    #     timestamps, all_cell_temps[s][t], 'Time (s)', 'Temperature (°C)', f'Stack {s + 1} Temperature {t + 1}'))
-                    # temp_plot_button.grid(row=temp, column=2, padx=5, pady=5)
                 # Plot all button
                 stack_t_plot_button = ttk.Button(stack_frame, text='Plot All', command=lambda s=stack_index: plot_data(
                     timestamps, all_cell_temps[s], 'Time (s)', 'Temperature (°C)', f'Stack {s + 1} Temperatures', 'temps'))
@@ -631,10 +647,10 @@ class BatteryManagementSystem:
         self.ACV_label = ttk.Label(
             self.data_frame, text='Average Cell Voltage:')
         self.ACV_label.grid(row=1, column=0, padx=5, pady=5, sticky='e')
-        avg_cell_voltage = np.mean([np.mean(voltage)
+        fullpack_avg_cell_voltage = np.mean([np.mean(voltage)
                                    for voltage in all_cell_voltages])
         self.ACV_value = ttk.Label(
-            self.data_frame, text=round(avg_cell_voltage, 4))
+            self.data_frame, text=round(fullpack_avg_cell_voltage, 4))
         self.ACV_value.grid(row=1, column=1, padx=5, pady=5)
         self.ACV_unit = ttk.Label(self.data_frame, text='V')
         self.ACV_unit.grid(row=1, column=2, padx=5, pady=5)
@@ -642,9 +658,9 @@ class BatteryManagementSystem:
         self.ACT_label = ttk.Label(
             self.data_frame, text='Average Cell Temperature:')
         self.ACT_label.grid(row=2, column=0, padx=10, pady=5, sticky='e')
-        avg_cell_temp = np.mean([np.mean(temp) for temp in all_cell_temps])
+        fullpack_avg_cell_temp = np.mean([np.mean(temp) for temp in all_cell_temps])
         self.ACT_value = ttk.Label(
-            self.data_frame, text=round(avg_cell_temp, 4))
+            self.data_frame, text=round(fullpack_avg_cell_temp, 4))
         self.ACT_value.grid(row=2, column=1, padx=5, pady=5)
         self.ACT_unit = ttk.Label(self.data_frame, text='°C')
         self.ACT_unit.grid(row=2, column=2, padx=5, pady=5)
