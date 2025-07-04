@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
                                                NavigationToolbar2Tk)
 import pandas as pd
-import serial
+# import serial
 import mplcursors
 
 
@@ -17,10 +17,10 @@ DEFAULT_STACK_ROWS = 3  # Default number of stacks in a row
 DEFAULT_STACK_COLS = 6  # Default number of stacks in a column
 DEFAULT_CELLS = 6   # Default number of cells per stack
 DEFAULT_TEMPS = 4  # Default number of temperature sensors per stack
-DEFAULT_UV = 3.000  # Default undervoltage threshold, in volts
+DEFAULT_UV = 3.100  # Default undervoltage threshold, in volts
 DEFAULT_OV = 4.200  # Default overvoltage threshold, in volts
-DEFAULT_UT = 45.0   # Default under-temperature threshold, in degrees Celsius
-DEFAULT_OT = 60.0   # Default over-temperature threshold, in degrees Celsius
+DEFAULT_UT = 10.0   # Default under-temperature threshold, in degrees Celsius
+DEFAULT_OT = 50.0   # Default over-temperature threshold, in degrees Celsius
 DEFAULT_BAUD = 115200  # Default baud rate for serial communication
 TIMESTAMP_COL = 1  # Column index for timestamp
 LAST_CELL_DATA_COL = 181  # Last column index for cell voltage & temp data
@@ -29,12 +29,11 @@ VSBAT_COL = 183
 VSHV_COL = 184
 CURR_COL = 185
 
+
 # GLOBAL VARIABLES
 all_cell_voltages = []  # List to store all cell voltages
 all_cell_temps = []  # List to store all cell temperatures
 total_pack_voltage = 0.0  # Total pack voltage
-# avg_cell_voltage = 0.0  # Average cell voltage
-# avg_cell_temp = 0.0  # Average cell temperature
 timestamps = []
 SoC = []
 VsBat = []
@@ -44,8 +43,8 @@ red = '#FF0000'  # Red color for over-limit value
 green = "#209D20"  # Green color for normal value
 blue = '#3333EC'  # Blue color for under-limit value
 
-# FUNCTIONS
 
+# FUNCTIONS
 
 def serial_ports():
     """ Lists serial port names
@@ -174,6 +173,7 @@ def calc_temp(raw_temp):
     R = raw_temp / (3.0 - (raw_temp * 0.0001))  # Calculate resistance
     return ((3435 / np.log(R / r_inf)) - 273.15)  # Convert to Celsius
 
+
 def check_status(value, lower, upper):
     """ Checks the status of a value against lower and upper limits.
 
@@ -188,6 +188,7 @@ def check_status(value, lower, upper):
         return red
     else:
         return green
+
 
 class BatteryManagementSystem:
     def __init__(self, root):
@@ -393,7 +394,8 @@ class BatteryManagementSystem:
             read_file(self.file_path, stack_rows, stack_cols, cells,
                       # Read the CSV file to update data
                       temps, timestamp_col, SoC_col, VsBat_col, VsHV_col, curr_col)
-            self.create_dynamic_widgets(stack_rows, stack_cols, cells, temps, UV, OV, UT, OT)
+            self.create_dynamic_widgets(
+                stack_rows, stack_cols, cells, temps, UV, OV, UT, OT)
 
         # Confirm Settings Button
         self.confirm_button = ttk.Button(
@@ -436,6 +438,8 @@ class BatteryManagementSystem:
         # Make the canvas scrollable
         def on_frame_configure(event):
             self.t_canvas.configure(scrollregion=self.t_canvas.bbox('all'))
+            self.t_canvas.xview_moveto(0)
+            self.t_canvas.yview_moveto(0)
         self.temps_frame.bind('<Configure>', on_frame_configure)
 
     def create_voltages_tab(self):
@@ -472,6 +476,8 @@ class BatteryManagementSystem:
         # Make the canvas scrollable
         def on_frame_configure(event):
             self.v_canvas.configure(scrollregion=self.v_canvas.bbox('all'))
+            self.v_canvas.xview_moveto(0)
+            self.v_canvas.yview_moveto(0)
         self.voltages_frame.bind('<Configure>', on_frame_configure)
 
     def create_overview_tab(self):
@@ -502,13 +508,15 @@ class BatteryManagementSystem:
         self.o_canvas.configure(xscrollcommand=self.o_hscrollbar.set)
 
         # Frame inside canvas for actual content
-        self.overview_frame = ttk.Frame(self.o_canvas, padding=(10, 5))
+        self.overview_frame = ttk.Frame(self.o_canvas)
         self.o_canvas.create_window(
             (0, 0), window=self.overview_frame, anchor='nw')
 
         # Make the canvas scrollable
         def on_frame_configure(event):
             self.o_canvas.configure(scrollregion=self.o_canvas.bbox('all'))
+            self.o_canvas.xview_moveto(0)
+            self.o_canvas.yview_moveto(0)
         self.overview_frame.bind('<Configure>', on_frame_configure)
 
     def create_dynamic_widgets(self, stack_rows, stack_cols, cells, temps, UV, OV, UT, OT):
@@ -549,7 +557,7 @@ class BatteryManagementSystem:
                     total_stack_voltage += avg_cell_voltage
                     cell_voltage_label = Label(
                         stack_frame, text=round(
-                        avg_cell_voltage, 4), fg=check_status(avg_cell_voltage, UV, OV))
+                            avg_cell_voltage, 4), fg=check_status(avg_cell_voltage, UV, OV))
                     cell_voltage_label.grid(row=cell, column=1, padx=5, pady=5)
                     voltage_unit = ttk.Label(stack_frame, text='V')
                     voltage_unit.grid(row=cell, column=2, padx=5, pady=5)
@@ -595,6 +603,7 @@ class BatteryManagementSystem:
         self.plot_frame = ttk.Frame(
             self.overview_frame, padding=(2, 2))
         self.plot_frame.grid(row=0, column=0)
+
         def overview_plots(ro, col, data, title, unit):
             """ Creates a plot in the overview tab.
 
@@ -613,7 +622,7 @@ class BatteryManagementSystem:
             mplcursors.cursor(hover=True)
             canvas.draw()
             plt.close(fig)
-            
+
         # SoC
         overview_plots(0, 0, SoC, 'State of Charge', '%')
         # VsBat
@@ -644,7 +653,7 @@ class BatteryManagementSystem:
             self.data_frame, text='Avg. Cell Voltage:')
         self.ACV_label.grid(row=1, column=0, padx=5, pady=5, sticky='e')
         fullpack_avg_cell_voltage = np.mean([np.mean(voltage)
-                                   for voltage in all_cell_voltages])
+                                             for voltage in all_cell_voltages])
         self.ACV_value = ttk.Label(
             self.data_frame, text=round(fullpack_avg_cell_voltage, 4))
         self.ACV_value.grid(row=1, column=1, padx=5, pady=5)
@@ -654,7 +663,8 @@ class BatteryManagementSystem:
         self.ACT_label = ttk.Label(
             self.data_frame, text='Avg. Cell Temp.:')
         self.ACT_label.grid(row=2, column=0, padx=10, pady=5, sticky='e')
-        fullpack_avg_cell_temp = np.mean([np.mean(temp) for temp in all_cell_temps])
+        fullpack_avg_cell_temp = np.mean(
+            [np.mean(temp) for temp in all_cell_temps])
         self.ACT_value = ttk.Label(
             self.data_frame, text=round(fullpack_avg_cell_temp, 4))
         self.ACT_value.grid(row=2, column=1, padx=5, pady=5)

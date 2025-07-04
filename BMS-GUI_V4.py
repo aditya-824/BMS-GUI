@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
                                                NavigationToolbar2Tk)
 import pandas as pd
-import serial
+# import serial
 
 # CONSTANTS
 DEFAULT_STACK_ROWS = 3  # Default number of stacks in a row

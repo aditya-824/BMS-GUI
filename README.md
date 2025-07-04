@@ -1,5 +1,12 @@
 # BMS-GUI
 Tkinter, Pandas based BMS GUI for 2025 prototype
+### Libraries Required:
+- Tkinter (pip install tk)
+- ttkthemes
+- numpy
+- matplotlib
+- pandas
+- mplcursors
 ## BMS-GUI_V1
 - Basic GUI frame created without any backend
 ## BMS-GUI_V2
