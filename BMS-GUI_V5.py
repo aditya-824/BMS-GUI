@@ -39,6 +39,7 @@ SoC = []
 VsBat = []
 VsHV = []
 curr = []
+num_rows = 0  # Number of rows in the DataFrame
 red = '#FF0000'  # Red color for over-limit value
 green = "#209D20"  # Green color for normal value
 blue = '#3333EC'  # Blue color for under-limit value
@@ -73,14 +74,14 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     """
     indiv_cell_voltages = []  # List to store individual cell voltages
     indiv_cell_temps = []  # List to store individual cell temperatures
-    global timestamps, SoC, VsBat, VsHV, current_converted
+    global timestamps, SoC, VsBat, VsHV, current_converted, num_rows
 
     # Read the CSV file, skipping the second line
     df = pd.read_csv(file_path, header=0, skiprows=[1])
 
     cols = df.columns.tolist()  # Get the list of column names
-    # Store timestamps from the first column
-    timestamps = df.iloc[:, timestamp_col-1].tolist()
+    num_rows = len(df.index)  # Get the number of rows in the DataFrame
+    timestamps = df.iloc[:, timestamp_col-1].tolist()  # Store timestamps from the first column
     SoC = df.iloc[:, SoC_col-1].tolist()  # Store SoC data
     VsBat = df.iloc[:, VsBat_col-1].tolist()  # Store VsBat data
     VsHV = df.iloc[:, VsHV_col-1].tolist()  # Store VsHV data
@@ -540,7 +541,7 @@ class BatteryManagementSystem:
             :param cells: Number of cells per stack.
             :param temps: Number of temperature sensors per stack.
         """
-        global total_pack_voltage, SoC, VsBat, VsHV, current_converted, red, blue, green
+        global total_pack_voltage, SoC, VsBat, VsHV, current_converted, red, blue, green, num_rows
         total_pack_voltage = 0.0  # Reset total pack voltage
         avg_stack_voltages = []  # List to store average stack voltages
 
@@ -574,6 +575,7 @@ class BatteryManagementSystem:
                     cell_voltage_label.grid(row=cell, column=1, padx=5, pady=5)
                     voltage_unit = ttk.Label(stack_frame, text='V')
                     voltage_unit.grid(row=cell, column=2, padx=5, pady=5)
+
                 avg_stack_voltages.append(total_stack_voltage)
                 total_pack_voltage += total_stack_voltage
 
@@ -655,6 +657,19 @@ class BatteryManagementSystem:
         overview_plots(1, 0, VsHV, 'VsHV', 'V')
         # Current
         overview_plots(1, 1, current_converted, 'Current', 'A')
+        # Total Pack Voltage
+        total_pack_voltage_arr = []  # List to store total pack voltages for plotting
+        temp_stack_voltage = 0.0  # Reset temp stack voltage
+        temp_pack_voltage = 0.0  # Reset temp pack voltage
+        for row in range(num_rows):
+            for stack in range(stack_rows * stack_cols):
+                for cell in range(cells):
+                    temp_stack_voltage += all_cell_voltages[stack][cell][row]
+                temp_pack_voltage += temp_stack_voltage
+                temp_stack_voltage = 0.0
+            total_pack_voltage_arr.append(temp_pack_voltage)
+            temp_pack_voltage = 0.0
+        overview_plots(2, 0, total_pack_voltage_arr, 'Total Pack Voltage', 'V')
 
         # Data & Stacks frame
         self.d_n_s_frame = ttk.Frame(self.overview_frame, padding=(10, 5))
