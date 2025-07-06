@@ -592,6 +592,7 @@ class BatteryManagementSystem:
                 stack_frame.grid(row=row, column=col,
                                  padx=5, pady=5, sticky='nw')
 
+                avg_cell_temps = []  # List to store average cell temperatures for the stack
                 for temp in range(temps):
                     # Cell temperatures with plot buttons
                     temp_button = ttk.Button(
@@ -600,16 +601,26 @@ class BatteryManagementSystem:
                     temp_button.grid(row=temp, column=0, padx=5, pady=5)
                     avg_cell_temp = np.mean(
                         all_cell_temps[stack_index][temp])
+                    avg_cell_temps.append(avg_cell_temp)
                     temp_value = Label(stack_frame, text=round(
                         avg_cell_temp, 4), fg=check_status(avg_cell_temp, UT, OT))
                     temp_value.grid(row=temp, column=1, padx=5, pady=5)
                     temp_unit = ttk.Label(stack_frame, text='°C')
                     temp_unit.grid(row=temp, column=2, padx=5, pady=5)
+                # Temp delta
+                temp_delta_label = ttk.Label(stack_frame, text='Delta:')
+                temp_delta_label.grid(
+                    row=temps, column=0, padx=5, pady=5, sticky='e')
+                temp_delta_value = ttk.Label(stack_frame, text=(round(
+                    max(all_cell_temps[stack_index][0]) - all_cell_temps[stack_index][0][0], 4)))
+                temp_delta_value.grid(row=temps, column=1, padx=5, pady=5)
+                temp_delta_unit = ttk.Label(stack_frame, text='°C')
+                temp_delta_unit.grid(row=temps, column=2, padx=5, pady=5)
                 # Plot all button
                 stack_t_plot_button = ttk.Button(stack_frame, text='Plot All', command=lambda s=stack_index: plot_data(
                     timestamps, all_cell_temps[s], 'Time (s)', 'Temperature (°C)', f'Stack {s + 1} Temperatures', 'temps'))
                 stack_t_plot_button.grid(
-                    row=temps, column=0, columnspan=3, padx=5, pady=5)
+                    row=temps+1, column=0, columnspan=3, padx=5, pady=5)
 
         # Filling overview tab
         # Plots
