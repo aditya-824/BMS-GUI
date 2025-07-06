@@ -39,6 +39,7 @@ SoC = []
 VsBat = []
 VsHV = []
 curr = []
+num_rows = 0  # Number of rows in the DataFrame
 red = '#FF0000'  # Red color for over-limit value
 green = "#209D20"  # Green color for normal value
 blue = '#3333EC'  # Blue color for under-limit value
@@ -73,14 +74,15 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     """
     indiv_cell_voltages = []  # List to store individual cell voltages
     indiv_cell_temps = []  # List to store individual cell temperatures
-    global timestamps, SoC, VsBat, VsHV, current_converted
+    global timestamps, SoC, VsBat, VsHV, current_converted, num_rows
 
     # Read the CSV file, skipping the second line
     df = pd.read_csv(file_path, header=0, skiprows=[1])
 
     cols = df.columns.tolist()  # Get the list of column names
-    # Store timestamps from the first column
-    timestamps = df.iloc[:, timestamp_col-1].tolist()
+    num_rows = 0
+    num_rows = len(df.index)  # Get the number of rows in the DataFrame
+    timestamps = df.iloc[:, timestamp_col-1].tolist()  # Store timestamps from the first column
     SoC = df.iloc[:, SoC_col-1].tolist()  # Store SoC data
     VsBat = df.iloc[:, VsBat_col-1].tolist()  # Store VsBat data
     VsHV = df.iloc[:, VsHV_col-1].tolist()  # Store VsHV data
@@ -184,7 +186,8 @@ def calc_curr(raw_curr):
     """
     # Assuming raw_curr is in mA, convert to A
     voltage = raw_curr * 5.0 / 1023.0
-    return ((voltage - 2.4929) / 0.0057)
+    current = ((voltage - 2.4929) / 0.0057)
+    return -current # Temporary modification to inverse current
 
 
 def check_status(value, lower, upper):
@@ -390,6 +393,7 @@ class BatteryManagementSystem:
         def update_data():
             """ Updates the instance variables with the values from the input fields. """
 
+            self.root.title("BMS - Loading...")
             stack_rows = int(self.stack_rows_entry.get())
             stack_cols = int(self.stack_cols_entry.get())
             cells = int(self.cells_entry.get())
@@ -540,7 +544,7 @@ class BatteryManagementSystem:
             :param cells: Number of cells per stack.
             :param temps: Number of temperature sensors per stack.
         """
-        global total_pack_voltage, SoC, VsBat, VsHV, current_converted, red, blue, green
+        global total_pack_voltage, SoC, VsBat, VsHV, current_converted, red, blue, green, num_rows
         total_pack_voltage = 0.0  # Reset total pack voltage
         avg_stack_voltages = []  # List to store average stack voltages
 
@@ -574,6 +578,7 @@ class BatteryManagementSystem:
                     cell_voltage_label.grid(row=cell, column=1, padx=5, pady=5)
                     voltage_unit = ttk.Label(stack_frame, text='V')
                     voltage_unit.grid(row=cell, column=2, padx=5, pady=5)
+
                 avg_stack_voltages.append(total_stack_voltage)
                 total_pack_voltage += total_stack_voltage
 
@@ -628,7 +633,7 @@ class BatteryManagementSystem:
             self.overview_frame, padding=(2, 2))
         self.plot_frame.grid(row=0, column=0)
 
-        def overview_plots(ro, col, data, title, unit):
+        def overview_plots(ro, col, data, title, unit, top_lim=None, bot_lim=None):
             """ Creates a plot in the overview tab.
 
                 :param ro: Row index for the plot.
@@ -643,9 +648,11 @@ class BatteryManagementSystem:
             ax.set_xlabel('Time (s)')
             ax.set_ylabel(f'{title} ({unit})')
             ax.set_title(title)
+            ax.set_ylim(top=top_lim, bottom=bot_lim)
             mplcursors.cursor(hover=True)
             canvas.draw()
             plt.close(fig)
+
 
         # SoC
         overview_plots(0, 0, SoC, 'State of Charge', '%')
@@ -655,6 +662,21 @@ class BatteryManagementSystem:
         overview_plots(1, 0, VsHV, 'VsHV', 'V')
         # Current
         overview_plots(1, 1, current_converted, 'Current', 'A')
+        # Total Pack Voltage
+        total_pack_voltage_arr = []  # List to store total pack voltages for plotting
+        temp_stack_voltage = 0.0  # Reset temp stack voltage
+        temp_pack_voltage = 0.0  # Reset temp pack voltage
+        for row in range(num_rows):
+            for stack in range(stack_rows * stack_cols):
+                for cell in range(cells):
+                    # print(stack, cell, row)
+                    # print (num_rows)
+                    temp_stack_voltage += all_cell_voltages[stack][cell][row]
+                temp_pack_voltage += temp_stack_voltage
+                temp_stack_voltage = 0.0
+            total_pack_voltage_arr.append(temp_pack_voltage)
+            temp_pack_voltage = 0.0
+        overview_plots(2, 0, total_pack_voltage_arr, 'Total Pack Voltage', 'V', 453.6, 270)
 
         # Data & Stacks frame
         self.d_n_s_frame = ttk.Frame(self.overview_frame, padding=(10, 5))
@@ -721,6 +743,9 @@ class BatteryManagementSystem:
             self.stack_value.grid(row=stack_index, column=1, padx=5, pady=5)
             self.stack_unit = ttk.Label(self.ASV_frame, text='V')
             self.stack_unit.grid(row=stack_index, column=2, padx=5, pady=5)
+        
+        file_name = self.file_path.split('/')[-1]  # Get the file name from the path
+        self.root.title(f"BMS - {file_name}")  # Update window title with file path
 
 
 def main():
