@@ -694,7 +694,19 @@ class BatteryManagementSystem:
         self.ACT_value.grid(row=2, column=1, padx=5, pady=5)
         self.ACT_unit = ttk.Label(self.data_frame, text='°C')
         self.ACT_unit.grid(row=2, column=2, padx=5, pady=5)
-
+        # Highest cell temperature
+        max_cell_temps = []
+        self.HCT_label = ttk.Label(
+            self.data_frame, text='Highest Cell Temp.:')
+        self.HCT_label.grid(row=3, column=0, padx=10, pady=5, sticky='e')
+        for stack_index in range(stack_rows * stack_cols):
+            for temp in range(temps):
+                max_cell_temps.append(max(all_cell_temps[stack_index][temp]))
+        self.HCT_value = ttk.Label(
+            self.data_frame, text=round(max(max_cell_temps), 4))
+        self.HCT_value.grid(row=3, column=1, padx=5, pady=5)
+        self.HCT_unit = ttk.Label(self.data_frame, text='°C')
+        self.HCT_unit.grid(row=3, column=2, padx=5, pady=5, sticky='w')
         # Average stack voltages
         self.ASV_frame = ttk.LabelFrame(
             self.d_n_s_frame, text='Average Stack Voltages', padding=(10, 5))
