@@ -73,7 +73,7 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     """
     indiv_cell_voltages = []  # List to store individual cell voltages
     indiv_cell_temps = []  # List to store individual cell temperatures
-    global timestamps, SoC, VsBat, VsHV, curr
+    global timestamps, SoC, VsBat, VsHV, current_converted
 
     # Read the CSV file, skipping the second line
     df = pd.read_csv(file_path, header=0, skiprows=[1])
@@ -85,6 +85,8 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     VsBat = df.iloc[:, VsBat_col-1].tolist()  # Store VsBat data
     VsHV = df.iloc[:, VsHV_col-1].tolist()  # Store VsHV data
     curr = df.iloc[:, curr_col-1].tolist()  # Store current data
+    current_converted = [calc_curr(i)
+                         for i in curr]  # Convert current to Amperes
 
     new_cols = []
     for i in range(timestamp_col, LAST_CELL_DATA_COL, 4):
@@ -172,6 +174,17 @@ def calc_temp(raw_temp):
     r_inf = 10000 * np.exp(-3435 / 298.15)
     R = raw_temp / (3.0 - (raw_temp * 0.0001))  # Calculate resistance
     return ((3435 / np.log(R / r_inf)) - 273.15)  # Convert to Celsius
+
+
+def calc_curr(raw_curr):
+    """ Calculates the current in Amperes from the raw current value.
+
+        :param raw_curr: Raw current value.
+        :returns: Current in Amperes.
+    """
+    # Assuming raw_curr is in mA, convert to A
+    voltage = raw_curr * 5.0 / 1023.0
+    return ((voltage - 2.4929) / 0.0057)
 
 
 def check_status(value, lower, upper):
@@ -527,7 +540,7 @@ class BatteryManagementSystem:
             :param cells: Number of cells per stack.
             :param temps: Number of temperature sensors per stack.
         """
-        global total_pack_voltage, SoC, VsBat, VsHV, curr, red, blue, green
+        global total_pack_voltage, SoC, VsBat, VsHV, current_converted, red, blue, green
         total_pack_voltage = 0.0  # Reset total pack voltage
         avg_stack_voltages = []  # List to store average stack voltages
 
@@ -630,7 +643,7 @@ class BatteryManagementSystem:
         # VsHV
         overview_plots(1, 0, VsHV, 'VsHV', 'V')
         # Current
-        overview_plots(1, 1, curr, 'Current', 'A')
+        overview_plots(1, 1, current_converted, 'Current', 'A')
 
         # Data & Stacks frame
         self.d_n_s_frame = ttk.Frame(self.overview_frame, padding=(10, 5))
