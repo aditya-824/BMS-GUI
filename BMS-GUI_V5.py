@@ -122,8 +122,8 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
                                     for temp in all_cell_temps[i][j]]
 
 
-def plot_data(x, y, x_label, y_label, title, do, type=''):
-    """ Plots the data using matplotlib. 
+def plot_data(x, y, x_label, y_label, title, do, type='', top_lim=None, bottom_lim=None):
+    """ Plots the data using matplotlib.
 
         :param x: X-axis data (e.g., timestamps).
         :param y: Y-axis data (e.g., cell voltages or temperatures).
@@ -161,6 +161,7 @@ def plot_data(x, y, x_label, y_label, title, do, type=''):
     else:
         line, = ax.plot(x, y)
         lines.append(line)
+        ax.set_ylim(top=top_lim, bottom=bottom_lim)
 
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
@@ -172,20 +173,6 @@ def plot_data(x, y, x_label, y_label, title, do, type=''):
     else:
         plt.savefig(title + ' ' + file_name.split('.')[0] + '.png')
         plt.close(fig)
-
-
-def save_graphs(stack_rows, stack_cols, x, y, x_label, y_label, type):
-    """ Saves the current graphs to files.
-
-        :param title: The title to use for the saved files.
-    """
-    for stack_index in range(stack_rows * stack_cols):
-        if (type == 'voltages'):
-            plot_data(x, y[stack_index], x_label, y_label,
-                      f'Stack {stack_index+1} Voltages', 'save', type)
-        else:
-            plot_data(x, y[stack_index], x_label, y_label,
-                      f'Stack {stack_index+1} Temperatures', 'save', type)
 
 
 def calc_temp(raw_temp):
@@ -241,7 +228,7 @@ class BatteryManagementSystem:
 
         # self.comms = serial_ports() # Searching for available serial ports
         self.create_widgets()
-        self.root.geometry("1400x700")
+        self.root.geometry("1450x700")
 
     def create_widgets(self):
         """ Creates the main widgets for the application after file selection. """
@@ -575,6 +562,21 @@ class BatteryManagementSystem:
         for widget in self.temps_frame.winfo_children():
             widget.destroy()
 
+        def save_graphs(stack_rows, stack_cols, x, y, x_label, y_label, type):
+            """ Saves the current graphs to files.
+
+                :param title: The title to use for the saved files.
+            """
+            self.root.title("BMS - Saving Graphs...")
+            for stack_index in range(stack_rows * stack_cols):
+                if (type == 'voltages'):
+                    plot_data(x, y[stack_index], x_label, y_label,
+                            f'Stack {stack_index+1} Voltages', 'save', type)
+                else:
+                    plot_data(x, y[stack_index], x_label, y_label,
+                            f'Stack {stack_index+1} Temperatures', 'save', type)
+            self.root.title(f"BMS - {file_name}")
+
         # Creating voltage widget grid
         for row in range(stack_rows):
             for col in range(stack_cols):
@@ -670,9 +672,11 @@ class BatteryManagementSystem:
                 :param data: Data to plot.
                 :param title: Title for the plot.
             """
+            sub_plot_frame = ttk.Frame(self.plot_frame)
+            sub_plot_frame.grid(row=ro, column=col, padx=2, pady=2)
             fig, ax = plt.subplots(figsize=(6, 4.2))
-            canvas = FigureCanvasTkAgg(fig, master=self.plot_frame)
-            canvas.get_tk_widget().grid(row=ro, column=col, padx=2, pady=2)
+            canvas = FigureCanvasTkAgg(fig, master=sub_plot_frame)
+            canvas.get_tk_widget().grid(row=0, column=0, padx=2, pady=2)
             ax.plot(timestamps, data)
             ax.set_xlabel('Time (s)')
             ax.set_ylabel(f'{title} ({unit})')
@@ -681,6 +685,10 @@ class BatteryManagementSystem:
             mplcursors.cursor(hover=True)
             canvas.draw()
             plt.close(fig)
+            expand_button = ttk.Button(
+                sub_plot_frame, text='Expand', command=lambda: plot_data(
+                    timestamps, data, 'Time (s)', f'{title} ({unit})', title, 'show', top_lim, bot_lim))
+            expand_button.grid(row=1, column=0, padx=2, pady=8, sticky='new')
 
         # SoC
         overview_plots(0, 0, SoC, 'State of Charge', '%')
