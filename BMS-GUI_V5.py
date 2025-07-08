@@ -43,6 +43,7 @@ num_rows = 0  # Number of rows in the DataFrame
 red = '#FF0000'  # Red color for over-limit value
 green = "#209D20"  # Green color for normal value
 blue = '#3333EC'  # Blue color for under-limit value
+file_name = ''
 
 
 # FUNCTIONS
@@ -74,7 +75,7 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     """
     indiv_cell_voltages = []  # List to store individual cell voltages
     indiv_cell_temps = []  # List to store individual cell temperatures
-    global timestamps, SoC, VsBat, VsHV, current_converted, num_rows
+    global timestamps, SoC, VsBat, VsHV, current_converted, num_rows, all_cell_voltages, all_cell_temps
 
     # Read the CSV file, skipping the second line
     df = pd.read_csv(file_path, header=0, skiprows=[1])
@@ -82,7 +83,8 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     cols = df.columns.tolist()  # Get the list of column names
     num_rows = 0
     num_rows = len(df.index)  # Get the number of rows in the DataFrame
-    timestamps = df.iloc[:, timestamp_col-1].tolist()  # Store timestamps from the first column
+    # Store timestamps from the first column
+    timestamps = df.iloc[:, timestamp_col-1].tolist()
     SoC = df.iloc[:, SoC_col-1].tolist()  # Store SoC data
     VsBat = df.iloc[:, VsBat_col-1].tolist()  # Store VsBat data
     VsHV = df.iloc[:, VsHV_col-1].tolist()  # Store VsHV data
@@ -99,6 +101,7 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     df_new = df[all_cols]  # Creating new dataframe with reordered columns
 
     all_cell_temps.clear()  # Clear previous temperature data
+    all_cell_voltages.clear()  # Clear previous voltage data
     # Extracting cell voltages and temperatures from the DataFrame
     for stack_data in range(timestamp_col, LAST_CELL_DATA_COL, cells+temps):
         for cell in range(cells):
@@ -119,7 +122,7 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
                                     for temp in all_cell_temps[i][j]]
 
 
-def plot_data(x, y, x_label, y_label, title, type=''):
+def plot_data(x, y, x_label, y_label, title, do, type=''):
     """ Plots the data using matplotlib. 
 
         :param x: X-axis data (e.g., timestamps).
@@ -164,7 +167,25 @@ def plot_data(x, y, x_label, y_label, title, type=''):
     ax.set_title(title)
     ax.grid(True)
     mplcursors.cursor(lines, hover=True)
-    plt.show()
+    if (do == 'show'):
+        plt.show()
+    else:
+        plt.savefig(title + ' ' + file_name.split('.')[0] + '.png')
+        plt.close(fig)
+
+
+def save_graphs(stack_rows, stack_cols, x, y, x_label, y_label, type):
+    """ Saves the current graphs to files.
+
+        :param title: The title to use for the saved files.
+    """
+    for stack_index in range(stack_rows * stack_cols):
+        if (type == 'voltages'):
+            plot_data(x, y[stack_index], x_label, y_label,
+                      f'Stack {stack_index+1} Voltages', 'save', type)
+        else:
+            plot_data(x, y[stack_index], x_label, y_label,
+                      f'Stack {stack_index+1} Temperatures', 'save', type)
 
 
 def calc_temp(raw_temp):
@@ -187,7 +208,7 @@ def calc_curr(raw_curr):
     # Assuming raw_curr is in mA, convert to A
     voltage = raw_curr * 5.0 / 1023.0
     current = ((voltage - 2.4929) / 0.0057)
-    return -current # Temporary modification to inverse current
+    return -current  # Temporary modification to inverse current
 
 
 def check_status(value, lower, upper):
@@ -544,7 +565,7 @@ class BatteryManagementSystem:
             :param cells: Number of cells per stack.
             :param temps: Number of temperature sensors per stack.
         """
-        global total_pack_voltage, SoC, VsBat, VsHV, current_converted, red, blue, green, num_rows
+        global total_pack_voltage, SoC, VsBat, VsHV, current_converted, red, blue, green, num_rows, file_name
         total_pack_voltage = 0.0  # Reset total pack voltage
         avg_stack_voltages = []  # List to store average stack voltages
 
@@ -567,7 +588,7 @@ class BatteryManagementSystem:
                 for cell in range(cells):
                     # Cell voltages with plot buttons
                     cell_button = ttk.Button(stack_frame, text=f'Cell {cell + 1}', command=lambda s=stack_index, c=cell: plot_data(
-                        timestamps, all_cell_voltages[s][c], 'Time (s)', 'Voltage (V)', f'Stack {s + 1} Cell {c + 1} Voltage', 'voltages'))
+                        timestamps, all_cell_voltages[s][c], 'Time (s)', 'Voltage (V)', f'Stack {s + 1} Cell {c + 1} Voltage', 'show', 'voltages'))
                     cell_button.grid(row=cell, column=0, padx=5, pady=5)
                     avg_cell_voltage = np.mean(
                         all_cell_voltages[stack_index][cell])
@@ -584,9 +605,13 @@ class BatteryManagementSystem:
 
                 # Plot all button
                 stack_v_plot_button = ttk.Button(stack_frame, text='Plot All', command=lambda s=stack_index: plot_data(
-                    timestamps, all_cell_voltages[s], 'Time (s)', 'Voltage (V)', f'Stack {s + 1} Voltages', 'voltages'))
+                    timestamps, all_cell_voltages[s], 'Time (s)', 'Voltage (V)', f'Stack {s + 1} Voltages', 'show', 'voltages'))
                 stack_v_plot_button.grid(
                     row=cells, column=0, columnspan=2, padx=5, pady=5)
+        save_v_graphs_button = ttk.Button(
+            self.voltages_frame, text='Save Stack Voltage Graphs', command=lambda: save_graphs(stack_rows, stack_cols, timestamps, all_cell_voltages, 'Time (s)', 'Voltage (V)', 'voltages'))
+        save_v_graphs_button.grid(
+            row=0, column=stack_cols, padx=5, pady=5, sticky='nw')
 
         # Creating temperature widget grid
         for row in range(stack_rows):
@@ -602,7 +627,7 @@ class BatteryManagementSystem:
                     # Cell temperatures with plot buttons
                     temp_button = ttk.Button(
                         stack_frame, text=f'Temp. {temp + 1}', command=lambda s=stack_index, t=temp: plot_data(
-                            timestamps, all_cell_temps[s][t], 'Time (s)', 'Temperature (°C)', f'Stack {s + 1} Temperature {t + 1}', 'temps'))
+                            timestamps, all_cell_temps[s][t], 'Time (s)', 'Temperature (°C)', f'Stack {s + 1} Temperature {t + 1}', 'show', 'temps'))
                     temp_button.grid(row=temp, column=0, padx=5, pady=5)
                     avg_cell_temp = np.mean(
                         all_cell_temps[stack_index][temp])
@@ -623,9 +648,13 @@ class BatteryManagementSystem:
                 temp_delta_unit.grid(row=temps, column=2, padx=5, pady=5)
                 # Plot all button
                 stack_t_plot_button = ttk.Button(stack_frame, text='Plot All', command=lambda s=stack_index: plot_data(
-                    timestamps, all_cell_temps[s], 'Time (s)', 'Temperature (°C)', f'Stack {s + 1} Temperatures', 'temps'))
+                    timestamps, all_cell_temps[s], 'Time (s)', 'Temperature (°C)', f'Stack {s + 1} Temperatures', 'show', 'temps'))
                 stack_t_plot_button.grid(
                     row=temps+1, column=0, columnspan=3, padx=5, pady=5)
+        save_t_graphs_button = ttk.Button(
+            self.temps_frame, text='Save Stack Temp. Graphs', command=lambda: save_graphs(stack_rows, stack_cols, timestamps, all_cell_temps, 'Time (s)', 'Temperature (°C)', 'temps'))
+        save_t_graphs_button.grid(
+            row=0, column=stack_cols, padx=5, pady=5, sticky='nw')
 
         # Filling overview tab
         # Plots
@@ -653,7 +682,6 @@ class BatteryManagementSystem:
             canvas.draw()
             plt.close(fig)
 
-
         # SoC
         overview_plots(0, 0, SoC, 'State of Charge', '%')
         # VsBat
@@ -669,14 +697,13 @@ class BatteryManagementSystem:
         for row in range(num_rows):
             for stack in range(stack_rows * stack_cols):
                 for cell in range(cells):
-                    # print(stack, cell, row)
-                    # print (num_rows)
                     temp_stack_voltage += all_cell_voltages[stack][cell][row]
                 temp_pack_voltage += temp_stack_voltage
                 temp_stack_voltage = 0.0
             total_pack_voltage_arr.append(temp_pack_voltage)
             temp_pack_voltage = 0.0
-        overview_plots(2, 0, total_pack_voltage_arr, 'Total Pack Voltage', 'V', 453.6, 270)
+        overview_plots(2, 0, total_pack_voltage_arr,
+                       'Total Pack Voltage', 'V', 453.6, 270)
 
         # Data & Stacks frame
         self.d_n_s_frame = ttk.Frame(self.overview_frame, padding=(10, 5))
@@ -743,9 +770,11 @@ class BatteryManagementSystem:
             self.stack_value.grid(row=stack_index, column=1, padx=5, pady=5)
             self.stack_unit = ttk.Label(self.ASV_frame, text='V')
             self.stack_unit.grid(row=stack_index, column=2, padx=5, pady=5)
-        
-        file_name = self.file_path.split('/')[-1]  # Get the file name from the path
-        self.root.title(f"BMS - {file_name}")  # Update window title with file path
+
+        # Get the file name from the path
+        file_name = self.file_path.split('/')[-1]
+        # Update window title with file name
+        self.root.title(f"BMS - {file_name}")
 
 
 def main():
