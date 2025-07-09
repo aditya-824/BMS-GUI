@@ -1,6 +1,7 @@
 # LIBRARIES
 from tkinter import *
-from tkinter import ttk
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
 from tkinter import filedialog
 from ttkthemes import ThemedTk
 import numpy as np
@@ -122,7 +123,7 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
                                     for temp in all_cell_temps[i][j]]
 
 
-def plot_data(x, y, x_label, y_label, title, do, type='', top_lim=None, bottom_lim=None):
+def plot_data(x, y, x_label, y_label, title, do, type='', top_lim=None, bot_lim=None):
     """ Plots the data using matplotlib.
 
         :param x: X-axis data (e.g., timestamps).
@@ -132,6 +133,7 @@ def plot_data(x, y, x_label, y_label, title, do, type='', top_lim=None, bottom_l
         :param title: Title of the plot."""
 
     lines = []
+    plt.style.use('Solarize_Light2')
     fig, ax = plt.subplots()
 
     if (type == 'voltages'):
@@ -161,7 +163,7 @@ def plot_data(x, y, x_label, y_label, title, do, type='', top_lim=None, bottom_l
     else:
         line, = ax.plot(x, y)
         lines.append(line)
-        ax.set_ylim(top=top_lim, bottom=bottom_lim)
+        ax.set_ylim(bottom=top_lim, top=bot_lim)
 
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
@@ -207,11 +209,11 @@ def check_status(value, lower, upper):
         :returns: A string indicating the colour in hex format
     """
     if value < lower:
-        return blue
+        return INFO
     elif value > upper:
-        return red
+        return DANGER
     else:
-        return green
+        return SUCCESS
 
 
 class BatteryManagementSystem:
@@ -595,9 +597,9 @@ class BatteryManagementSystem:
                     avg_cell_voltage = np.mean(
                         all_cell_voltages[stack_index][cell])
                     total_stack_voltage += avg_cell_voltage
-                    cell_voltage_label = Label(
+                    cell_voltage_label = ttk.Label(
                         stack_frame, text=round(
-                            avg_cell_voltage, 4), fg=check_status(avg_cell_voltage, UV, OV))
+                            avg_cell_voltage, 4), bootstyle=check_status(avg_cell_voltage, UV, OV))
                     cell_voltage_label.grid(row=cell, column=1, padx=5, pady=5)
                     voltage_unit = ttk.Label(stack_frame, text='V')
                     voltage_unit.grid(row=cell, column=2, padx=5, pady=5)
@@ -613,7 +615,7 @@ class BatteryManagementSystem:
         save_v_graphs_button = ttk.Button(
             self.voltages_frame, text='Save Stack Voltage Graphs', command=lambda: save_graphs(stack_rows, stack_cols, timestamps, all_cell_voltages, 'Time (s)', 'Voltage (V)', 'voltages'))
         save_v_graphs_button.grid(
-            row=0, column=stack_cols, padx=5, pady=5, sticky='nw')
+            row=stack_rows, column=0, columnspan=stack_cols, padx=5, pady=5, sticky='nw')
 
         # Creating temperature widget grid
         for row in range(stack_rows):
@@ -634,8 +636,8 @@ class BatteryManagementSystem:
                     avg_cell_temp = np.mean(
                         all_cell_temps[stack_index][temp])
                     avg_cell_temps.append(avg_cell_temp)
-                    temp_value = Label(stack_frame, text=round(
-                        avg_cell_temp, 4), fg=check_status(avg_cell_temp, UT, OT))
+                    temp_value = ttk.Label(stack_frame, text=round(
+                        avg_cell_temp, 4), bootstyle=check_status(avg_cell_temp, UT, OT))
                     temp_value.grid(row=temp, column=1, padx=5, pady=5)
                     temp_unit = ttk.Label(stack_frame, text='°C')
                     temp_unit.grid(row=temp, column=2, padx=5, pady=5)
@@ -656,7 +658,7 @@ class BatteryManagementSystem:
         save_t_graphs_button = ttk.Button(
             self.temps_frame, text='Save Stack Temp. Graphs', command=lambda: save_graphs(stack_rows, stack_cols, timestamps, all_cell_temps, 'Time (s)', 'Temperature (°C)', 'temps'))
         save_t_graphs_button.grid(
-            row=0, column=stack_cols, padx=5, pady=5, sticky='nw')
+            row=stack_rows, column=0, columnspan=stack_cols, padx=5, pady=5)
 
         # Filling overview tab
         # Plots
@@ -674,6 +676,7 @@ class BatteryManagementSystem:
             """
             sub_plot_frame = ttk.Frame(self.plot_frame)
             sub_plot_frame.grid(row=ro, column=col, padx=2, pady=2)
+            plt.style.use('Solarize_Light2')  # Use dark background style
             fig, ax = plt.subplots(figsize=(6, 4.2))
             canvas = FigureCanvasTkAgg(fig, master=sub_plot_frame)
             canvas.get_tk_widget().grid(row=0, column=0, padx=2, pady=2)
@@ -682,6 +685,7 @@ class BatteryManagementSystem:
             ax.set_ylabel(f'{title} ({unit})')
             ax.set_title(title)
             ax.set_ylim(top=top_lim, bottom=bot_lim)
+            ax.grid(True)
             mplcursors.cursor(hover=True)
             canvas.draw()
             plt.close(fig)
@@ -700,6 +704,7 @@ class BatteryManagementSystem:
         overview_plots(1, 1, current_converted, 'Current', 'A')
         # Total Pack Voltage
         total_pack_voltage_arr = []  # List to store total pack voltages for plotting
+        total_pack_voltage_arr.clear()  # Clear previous data
         temp_stack_voltage = 0.0  # Reset temp stack voltage
         temp_pack_voltage = 0.0  # Reset temp pack voltage
         for row in range(num_rows):
@@ -786,7 +791,9 @@ class BatteryManagementSystem:
 
 
 def main():
-    root = ThemedTk(theme="plastik")
+    root = ttk.Window(themename="vapor")
+    # style=ttk.Style()
+    # print(style.theme_names())
     app = BatteryManagementSystem(root)
     root.mainloop()
 
