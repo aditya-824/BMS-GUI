@@ -1,7 +1,8 @@
 # BMS-GUI
 Tkinter, Pandas based BMS GUI for 2025 prototype
 ### Libraries Required:
-- Tkinter (pip install tk)
+- Tkinter ('pip install tk')
+(Install rest with 'pip install <library-name>')
 - ttkbootstrap
 - ttkthemes
 - numpy
@@ -22,6 +23,9 @@ Tkinter, Pandas based BMS GUI for 2025 prototype
 - Tkinter theme implemented
 - Visual enhancements
 ## BMS-GUI_V5
-- Graphs embedded into Overview tab
+- Graphs embedded into Overview tab, also made expandable
 - Average stack voltages frame added
 - Graph cursors, fixed scales implemented
+- Function to save all stack voltage and temperature graphs
+## BMS-GUI_V6
+- UI enhancement with ttkbootstrap
