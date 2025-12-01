@@ -41,9 +41,6 @@ VsBat = []
 VsHV = []
 curr = []
 num_rows = 0  # Number of rows in the DataFrame
-red = '#FF0000'  # Red color for over-limit value
-green = "#209D20"  # Green color for normal value
-blue = '#3333EC'  # Blue color for under-limit value
 file_name = ''
 
 
@@ -237,7 +234,7 @@ class BatteryManagementSystem:
 
         self.notebook = ttk.Notebook(self.root)  # Notebook for tabs
         self.notebook.pack(expand=True, fill='both', padx=10,
-                           pady=5)
+                           pady=10)
 
         # Create tabs for different functionalities
         self.create_settings_tab()
@@ -573,10 +570,10 @@ class BatteryManagementSystem:
             for stack_index in range(stack_rows * stack_cols):
                 if (type == 'voltages'):
                     plot_data(x, y[stack_index], x_label, y_label,
-                            f'Stack {stack_index+1} Voltages', 'save', type)
+                              f'Stack {stack_index+1} Voltages', 'save', type)
                 else:
                     plot_data(x, y[stack_index], x_label, y_label,
-                            f'Stack {stack_index+1} Temperatures', 'save', type)
+                              f'Stack {stack_index+1} Temperatures', 'save', type)
             self.root.title(f"BMS - {file_name}")
 
         # Creating voltage widget grid
@@ -615,7 +612,7 @@ class BatteryManagementSystem:
         save_v_graphs_button = ttk.Button(
             self.voltages_frame, text='Save Stack Voltage Graphs', command=lambda: save_graphs(stack_rows, stack_cols, timestamps, all_cell_voltages, 'Time (s)', 'Voltage (V)', 'voltages'))
         save_v_graphs_button.grid(
-            row=stack_rows, column=0, columnspan=stack_cols, padx=5, pady=5, sticky='nw')
+            row=stack_rows, column=0, columnspan=stack_cols, padx=5, pady=5, sticky='ew')
 
         # Creating temperature widget grid
         for row in range(stack_rows):
@@ -658,13 +655,13 @@ class BatteryManagementSystem:
         save_t_graphs_button = ttk.Button(
             self.temps_frame, text='Save Stack Temp. Graphs', command=lambda: save_graphs(stack_rows, stack_cols, timestamps, all_cell_temps, 'Time (s)', 'Temperature (°C)', 'temps'))
         save_t_graphs_button.grid(
-            row=stack_rows, column=0, columnspan=stack_cols, padx=5, pady=5)
+            row=stack_rows, column=0, columnspan=stack_cols, padx=5, pady=5, sticky='ew')
 
         # Filling overview tab
         # Plots
         self.plot_frame = ttk.Frame(
             self.overview_frame, padding=(2, 2))
-        self.plot_frame.grid(row=0, column=0)
+        self.plot_frame.grid(row=0, column=0, sticky='nw')
 
         def overview_plots(ro, col, data, title, unit, top_lim=None, bot_lim=None):
             """ Creates a plot in the overview tab.
@@ -695,13 +692,13 @@ class BatteryManagementSystem:
             expand_button.grid(row=1, column=0, padx=2, pady=8, sticky='new')
 
         # SoC
-        overview_plots(0, 0, SoC, 'State of Charge', '%')
+        # overview_plots(0, 0, SoC, 'State of Charge', '%')
         # VsBat
-        overview_plots(0, 1, VsBat, 'VsBat', 'V')
+        # overview_plots(0, 1, VsBat, 'VsBat', 'V')
         # VsHV
-        overview_plots(1, 0, VsHV, 'VsHV', 'V')
+        # overview_plots(1, 0, VsHV, 'VsHV', 'V')
         # Current
-        overview_plots(1, 1, current_converted, 'Current', 'A')
+        overview_plots(0, 0, current_converted, 'Current', 'A')
         # Total Pack Voltage
         total_pack_voltage_arr = []  # List to store total pack voltages for plotting
         total_pack_voltage_arr.clear()  # Clear previous data
@@ -715,7 +712,7 @@ class BatteryManagementSystem:
                 temp_stack_voltage = 0.0
             total_pack_voltage_arr.append(temp_pack_voltage)
             temp_pack_voltage = 0.0
-        overview_plots(2, 0, total_pack_voltage_arr,
+        overview_plots(0, 1, total_pack_voltage_arr,
                        'Total Pack Voltage', 'V', 453.6, 270)
 
         # Data & Stacks frame
@@ -794,7 +791,7 @@ def main():
     root = ttk.Window(themename="vapor")
     # style=ttk.Style()
     # print(style.theme_names())
-    app = BatteryManagementSystem(root)
+    BatteryManagementSystem(root)
     root.mainloop()
 
 
