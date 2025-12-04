@@ -554,6 +554,11 @@ class BatteryManagementSystem:
         global total_pack_voltage, SoC, VsBat, VsHV, current_converted, red, blue, green, num_rows, file_name
         total_pack_voltage = 0.0  # Reset total pack voltage
         avg_stack_voltages = []  # List to store average stack voltages
+        print_order = [
+            [16, 15, 10, 9, 4, 3],
+            [17, 14, 11, 8, 5, 2],
+            [18, 13, 12, 7, 6, 1]
+        ]
 
         # Clear previous widgets in voltages and temperatures frames
         for widget in self.voltages_frame.winfo_children():
@@ -579,7 +584,7 @@ class BatteryManagementSystem:
         # Creating voltage widget grid
         for row in range(stack_rows):
             for col in range(stack_cols):
-                stack_index = row * stack_cols + col
+                stack_index = print_order[row][col] - 1
                 stack_frame = ttk.LabelFrame(
                     self.voltages_frame, text=f'Stack {stack_index + 1}')
                 stack_frame.grid(row=row, column=col,
@@ -617,7 +622,7 @@ class BatteryManagementSystem:
         # Creating temperature widget grid
         for row in range(stack_rows):
             for col in range(stack_cols):
-                stack_index = row * stack_cols + col
+                stack_index = print_order[row][col] - 1
                 stack_frame = ttk.LabelFrame(
                     self.temps_frame, text=f'Stack {stack_index + 1}')
                 stack_frame.grid(row=row, column=col,

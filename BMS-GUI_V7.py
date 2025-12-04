@@ -27,15 +27,8 @@ DEFAULT_BAUD = 115200  # Default baud rate for serial communication
 
 
 # GLOBAL VARIABLES
-all_cell_voltages = []  # List to store all cell voltages
-all_cell_temps = []  # List to store all cell temperatures
-total_pack_voltage = 0.0  # Total pack voltage
-timestamps = []
-SoC = []
-VsBat = []
-VsHV = []
-curr = []
-num_rows = 0  # Number of rows in the DataFrame
+serial_values = ['0.0' for _ in range(108)]  # Placeholder for serial data
+serial_running = False
 
 
 # FUNCTIONS
@@ -59,29 +52,6 @@ def serial_ports():
     return comms
 
 
-def calc_temp(raw_temp):
-    """ Calculates the temperature in Celsius from the raw temperature value.
-
-        :param raw_temp: Raw temperature value.
-        :returns: Temperature in Celsius.
-    """
-    r_inf = 10000 * np.exp(-3435 / 298.15)
-    R = raw_temp / (3.0 - (raw_temp * 0.0001))  # Calculate resistance
-    return ((3435 / np.log(R / r_inf)) - 273.15)  # Convert to Celsius
-
-
-def calc_curr(raw_curr):
-    """ Calculates the current in Amperes from the raw current value.
-
-        :param raw_curr: Raw current value.
-        :returns: Current in Amperes.
-    """
-    # Assuming raw_curr is in mA, convert to A
-    voltage = raw_curr * 5.0 / 1023.0
-    current = ((voltage - 2.4929) / 0.0057)
-    return -current  # Temporary modification to inverse current
-
-
 def check_status(value, lower, upper):
     """ Checks the status of a value against lower and upper limits.
 
@@ -90,6 +60,7 @@ def check_status(value, lower, upper):
         :param upper: The upper limit.
         :returns: A string indicating the colour in hex format
     """
+    value = float(value)
     if value < lower:
         return INFO
     elif value > upper:
@@ -114,10 +85,11 @@ class BatteryManagementSystem:
 
         # Create tabs for different functionalities
         self.create_settings_tab(notebook)
-        self.create_overview_tab(notebook)
+        # self.create_overview_tab(notebook)
         self.create_voltages_tab(notebook)
-        self.create_temps_tab(notebook)
+        # self.create_temps_tab(notebook)
         self.root.geometry("1450x700")
+        self.serial_values = serial_values
 
     def start_serial_read(self):
         # Open serial port and start thread
@@ -134,9 +106,13 @@ class BatteryManagementSystem:
     def read_serial_data(self):
         while self.serial_running:
             try:
-                line = self.serial_port.readline().decode().strip()
+                line = self.serial_port.readline().decode('utf-8').rstrip()
                 if line:
-                    self.serial_values = line.split(', ')
+                    values = line.split(', ')
+                    for i, val in enumerate(values):
+                        if i < len(self.serial_values):
+                            self.root.after(
+                                0, self.serial_values.__setitem__, i, val)
             except Exception as e:
                 print(f"Serial read error: {e}")
 
@@ -152,13 +128,13 @@ class BatteryManagementSystem:
         comm_frame.grid(row=0, column=0, padx=10, pady=5)
         port_label = ttk.Label(comm_frame, text='Serial Port:')
         port_label.grid(row=0, column=0, padx=5, pady=5)
-        port_var = StringVar()
-        port_option = ttk.OptionMenu(comm_frame, port_var, '')
+        self.port_var = StringVar()
+        port_option = ttk.OptionMenu(comm_frame, self.port_var, '')
         port_option.grid(row=0, column=1, padx=5, pady=5)
 
         def update_ports():
             def worker():
-                port_var.set('Scanning...')
+                self.port_var.set('Scanning...')
                 ports = serial_ports()
 
                 def update_menu():
@@ -167,14 +143,14 @@ class BatteryManagementSystem:
                     if ports:
                         for port in ports:
                             menu.add_command(
-                                label=port, command=lambda value=port: port_var.set(value))
-                        port_var.set(ports[0])
-                        confirm_button.config(state='enabled')
+                                label=port, command=lambda value=port: self.port_var.set(value))
+                        self.port_var.set(ports[0])
+                        self.confirm_button.config(state='enabled')
                     else:
                         menu.add_command(
-                            label='No ports found', command=lambda: port_var.set('No ports found'))
-                        port_var.set('No ports found')
-                        confirm_button.config(state='disabled')
+                            label='No ports found', command=lambda: self.port_var.set('No ports found'))
+                        self.port_var.set('No ports found')
+                        self.confirm_button.config(state='disabled')
                 self.root.after(0, update_menu)
             threading.Thread(target=worker, daemon=True).start()
 
@@ -187,17 +163,17 @@ class BatteryManagementSystem:
         baudrate_label.grid(row=1, column=0, padx=5, pady=5)
         bauds = ['300', '600', '750', '1200', '2400', '4800', '9600', '19200', '28800', '31250', '38400',
                  '57600', '74880', '115200', '230400', '250000', '460800', '500000', '921600', '1000000', '2000000']
-        baud_var = StringVar(value=DEFAULT_BAUD)
+        self.baud_var = StringVar(value=DEFAULT_BAUD)
         baudrate_option = ttk.OptionMenu(
-            comm_frame, baud_var, DEFAULT_BAUD, *bauds)
+            comm_frame, self.baud_var, DEFAULT_BAUD, *bauds)
         baudrate_option.grid(row=1, column=1, padx=5, pady=5)
 
         # Confirm Settings Button
-        confirm_button = ttk.Button(
-            settings_tab, text='Confirm & Launch')
+        self.confirm_button = ttk.Button(
+            settings_tab, text='Confirm & Launch', command=self.confirm_settings)
         # Disabled until a port is found
-        confirm_button.config(state='disabled')
-        confirm_button.grid(
+        self.confirm_button.config(state='disabled')
+        self.confirm_button.grid(
             row=2, column=0, columnspan=2, padx=10, pady=5)
 
     def create_overview_tab(self, notebook):
@@ -253,13 +229,15 @@ class BatteryManagementSystem:
         data_sent.grid(row=1, column=1, padx=5, pady=5, sticky='w')
 
         # Charging
-        charger_status = self.serial_values[0]
+        charger_status = serial_values[0]
         charging_frame = ttk.LabelFrame(
             overview_frame, padding=(10, 5), text='Charging Status')
         charging_frame.grid(row=0, column=0, padx=10, pady=5, sticky='nw')
-        charger_status_label = ttk.Label(charging_frame, text='Charger status: ')
+        charger_status_label = ttk.Label(
+            charging_frame, text='Charger status: ')
         charger_status_label.grid(row=0, column=0, padx=5, pady=5, sticky='e')
-        charging_status_label = ttk.Label(charging_frame, text="Charging status: ")
+        charging_status_label = ttk.Label(
+            charging_frame, text="Charging status: ")
         charging_status_label.grid(row=1, column=0, padx=5, pady=5, sticky='e')
         charger_status_val = ttk.Label(charging_frame, text='-')
         charger_status_val.grid(row=0, column=1, padx=5, pady=5, sticky='w')
@@ -429,13 +407,14 @@ class BatteryManagementSystem:
 
                 for cell in range(DEFAULT_CELLS):
                     # Cell voltages with plot buttons
+                    # Extracting cell voltage from serial values
+                    cell_voltage = serial_values[stack_index *
+                                                 DEFAULT_CELLS + cell]
                     cell_label = ttk.Label(
                         stack_frame, text=f'Cell {cell + 1}')
                     cell_label.grid(row=cell, column=0, padx=5, pady=5)
-                    cell_voltage = 0.0
                     cell_voltage_label = ttk.Label(
-                        stack_frame, text=round(
-                            cell_voltage, 4), bootstyle=check_status(cell_voltage, DEFAULT_UV, DEFAULT_OV))
+                        stack_frame, textvariable=StringVar(value=cell_voltage), bootstyle=check_status(cell_voltage, DEFAULT_UV, DEFAULT_OV))
                     cell_voltage_label.grid(row=cell, column=1, padx=5, pady=5)
                     voltage_unit = ttk.Label(stack_frame, text='V')
                     voltage_unit.grid(row=cell, column=2, padx=5, pady=5)
@@ -497,11 +476,16 @@ class BatteryManagementSystem:
                         stack_frame, text=f'Temp. {temp + 1}')
                     temp_button.grid(row=temp, column=0, padx=5, pady=5)
                     cell_temp = 0.0
-                    temp_value = ttk.Label(stack_frame, text=round(
-                        cell_temp, 4), bootstyle=check_status(cell_temp, DEFAULT_UT, DEFAULT_OT))
+                    temp_value = ttk.Label(stack_frame, textvariable=StringVar(
+                        value=cell_temp), bootstyle=check_status(cell_temp, DEFAULT_UT, DEFAULT_OT))
                     temp_value.grid(row=temp, column=1, padx=5, pady=5)
                     temp_unit = ttk.Label(stack_frame, text='°C')
                     temp_unit.grid(row=temp, column=2, padx=5, pady=5)
+
+    def confirm_settings(self):
+        """ Confirms the settings and launches the main application. """
+        self.title = f"ORI BMS - {self.port_var.get()} @ {self.baud_var.get()} baud"
+        self.start_serial_read()
 
 
 def main():

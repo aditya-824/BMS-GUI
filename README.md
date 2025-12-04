@@ -29,3 +29,5 @@ Tkinter, Pandas based BMS GUI for 2025 prototype
 - Function to save all stack voltage and temperature graphs
 ## BMS-GUI_V6
 - UI enhancement with ttkbootstrap
+## BMS-GUI_V7
+- Reworked live GUI
