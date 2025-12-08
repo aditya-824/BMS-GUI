@@ -194,7 +194,7 @@ def calc_curr(raw_curr):
     # Assuming raw_curr is in mA, convert to A
     voltage = raw_curr * 5.0 / 1023.0
     current = ((voltage - 2.4929) / 0.0057)
-    return -current  # Temporary modification to inverse current
+    return current
 
 
 def check_status(value, lower, upper):
@@ -771,6 +771,24 @@ class BatteryManagementSystem:
         self.HCT_value.grid(row=3, column=1, padx=5, pady=5)
         self.HCT_unit = ttk.Label(self.data_frame, text='°C')
         self.HCT_unit.grid(row=3, column=2, padx=5, pady=5, sticky='w')
+        # Average current
+        self.avg_curr = ttk.Label(
+            self.data_frame, text='Average Current:')
+        self.avg_curr.grid(row=4, column=0, padx=10, pady=5, sticky='e')
+        self.avg_curr_value = ttk.Label(
+            self.data_frame, text=round(np.mean(current_converted), 4))
+        self.avg_curr_value.grid(row=4, column=1, padx=5, pady=5)
+        self.avg_curr_unit = ttk.Label(self.data_frame, text='A')
+        self.avg_curr_unit.grid(row=4, column=2, padx=5, pady=5, sticky='w')
+        # Highest current
+        self.HC_label = ttk.Label(
+            self.data_frame, text='Highest Current:')
+        self.HC_label.grid(row=5, column=0, padx=10, pady=5, sticky='e')
+        self.HC_value = ttk.Label(
+            self.data_frame, text=round(max(current_converted), 4))
+        self.HC_value.grid(row=5, column=1, padx=5, pady=5)
+        self.HC_unit = ttk.Label(self.data_frame, text='°C')
+        self.HC_unit.grid(row=5, column=2, padx=5, pady=5, sticky='w')
         # Average stack voltages
         self.ASV_frame = ttk.LabelFrame(
             self.d_n_s_frame, text='Average Stack Voltages', padding=(10, 5))
