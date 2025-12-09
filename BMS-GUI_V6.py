@@ -430,7 +430,7 @@ class BatteryManagementSystem:
             # Plot current data
             plot_data(time_segment, current_segment,
                       'Time (s)', 'Current (A)', 'Current vs Time', 'show', 'current')
-        
+
         self.current_frame = ttk.LabelFrame(
             self.settings_tab, text='Current Settings', padding=(10, 5))
         self.current_frame.grid(
