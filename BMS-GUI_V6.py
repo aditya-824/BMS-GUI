@@ -3,6 +3,7 @@ from tkinter import *
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from tkinter import filedialog
+from tkinter import messagebox
 from ttkthemes import ThemedTk
 import numpy as np
 import matplotlib.pyplot as plt
@@ -376,6 +377,85 @@ class BatteryManagementSystem:
         self.current_entry = ttk.Entry(self.columns_frame, width=5)
         self.current_entry.insert(0, CURR_COL)
         self.current_entry.grid(row=0, column=9, padx=5, pady=5)
+
+        # Current Avg Settings Frame
+        def get_avg_current():
+            """ Calculates and displays the average current over the specified time interval. """
+
+            start_time = int(self.ca_start_time_entry.get())
+            end_time = int(self.ca_end_time_entry.get())
+
+            if start_time < 0 or end_time < 0 or start_time >= end_time or end_time > timestamps[-1]:
+                messagebox.showerror(
+                    "Invalid Input", "Please enter valid start and end times.")
+                return
+
+            # Find indices corresponding to the specified time interval
+            start_index = next(
+                (i for i, t in enumerate(timestamps) if t >= start_time), None)
+            end_index = next(
+                (i for i, t in enumerate(timestamps) if t > end_time), None)
+
+            if start_index is None or end_index is None:
+                messagebox.showerror(
+                    "Invalid Input", "Time interval out of range.")
+                return
+
+            # Calculate average current
+            current_segment = current_converted[start_index:end_index]
+            avg_current = sum(current_segment) / len(current_segment)
+
+            # Display average current
+            self.ca_result_label.config(
+                text=f'Average Current (A): {avg_current:.2f}')
+
+        def plot_curr(start_time, end_time):
+            """ Plots the current over the specified time interval. """
+
+            # Find indices corresponding to the specified time interval
+            start_index = next(
+                (i for i, t in enumerate(timestamps) if t >= start_time), None)
+            end_index = next(
+                (i for i, t in enumerate(timestamps) if t > end_time), None)
+
+            if start_index is None or end_index is None:
+                messagebox.showerror(
+                    "Invalid Input", "Time interval out of range.")
+                return
+
+            # Extract data for plotting
+            time_segment = timestamps[start_index:end_index]
+            current_segment = current_converted[start_index:end_index]
+
+            # Plot current data
+            plot_data(time_segment, current_segment,
+                      'Time (s)', 'Current (A)', 'Current vs Time', 'show', 'current')
+        
+        self.current_frame = ttk.LabelFrame(
+            self.settings_tab, text='Current Settings', padding=(10, 5))
+        self.current_frame.grid(
+            row=1, column=1, padx=10, pady=5, sticky='nsew')
+        self.ca_start_time_label = ttk.Label(
+            self.current_frame, text='Start time (s):')
+        self.ca_start_time_label.grid(
+            row=0, column=0, padx=5, pady=5, sticky='e')
+        self.ca_start_time_entry = ttk.Entry(self.current_frame, width=10)
+        self.ca_start_time_entry.grid(row=0, column=1, padx=5, pady=5)
+        self.ca_end_time_label = ttk.Label(
+            self.current_frame, text='End time (s):')
+        self.ca_end_time_label.grid(
+            row=0, column=2, padx=5, pady=5, sticky='e')
+        self.ca_end_time_entry = ttk.Entry(self.current_frame, width=10)
+        self.ca_end_time_entry.grid(row=0, column=3, padx=5, pady=5)
+        self.ca_get_button = ttk.Button(
+            self.current_frame, text='Get Average Current', command=get_avg_current)
+        self.ca_get_button.grid(row=1, column=0, padx=5, pady=5)
+        self.ca_result_label = ttk.Label(
+            self.current_frame, text='Average Current (A):')
+        self.ca_result_label.grid(row=1, column=1, padx=5, pady=5, sticky='e')
+        self.ca_graph_button = ttk.Button(self.current_frame, text='Plot Current', command=lambda:  plot_curr(
+            int(self.ca_start_time_entry.get()), int(self.ca_end_time_entry.get())))
+        self.ca_graph_button.grid(row=1, column=2, padx=5, pady=5)
 
         # Communication Settings Frame
         # self.comm_frame = ttk.LabelFrame(self.settings_tab, text='Communication Settings', padding=(10, 5))
