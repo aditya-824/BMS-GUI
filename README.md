@@ -29,5 +29,9 @@ Tkinter, Pandas based BMS GUI for 2025 prototype
 - Function to save all stack voltage and temperature graphs
 ## BMS-GUI_V6
 - UI enhancement with ttkbootstrap
+## BMS-GUI_V6_12hrF
+- Modified version of V6 that parses 12 hr time from the datalogger
+- Extracts data for individual lap time inputs (in 12 hr format)
+- Use with csv files ending with 12hrF
 ## BMS-GUI_V7
 - Reworked live GUI
