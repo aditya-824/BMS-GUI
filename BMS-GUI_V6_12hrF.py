@@ -20,10 +20,10 @@ DEFAULT_STACK_ROWS = 3  # Default number of stacks in a row
 DEFAULT_STACK_COLS = 6  # Default number of stacks in a column
 DEFAULT_CELLS = 6   # Default number of cells per stack
 DEFAULT_TEMPS = 4  # Default number of temperature sensors per stack
-DEFAULT_UV = 3.100  # Default undervoltage threshold, in volts
+DEFAULT_UV = 2.700  # Default undervoltage threshold, in volts
 DEFAULT_OV = 4.200  # Default overvoltage threshold, in volts
 DEFAULT_UT = 10.0   # Default under-temperature threshold, in degrees Celsius
-DEFAULT_OT = 50.0   # Default over-temperature threshold, in degrees Celsius
+DEFAULT_OT = 45.0   # Default over-temperature threshold, in degrees Celsius
 DEFAULT_BAUD = 115200  # Default baud rate for serial communication
 TIMESTAMP_COL = 1  # Column index for timestamp
 LAST_CELL_DATA_COL = 181  # Last column index for cell voltage & temp data
@@ -31,6 +31,9 @@ SOC_COL = 182
 VSBAT_COL = 183
 VSHV_COL = 184
 CURR_COL = 185
+N_ACTUAL_COL = 186
+T_MOTOR_COL = 187
+T_IGBT_COL = 188
 
 
 # GLOBAL VARIABLES
@@ -75,7 +78,7 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     """
     indiv_cell_voltages = []  # List to store individual cell voltages
     indiv_cell_temps = []  # List to store individual cell temperatures
-    global timestamps, SoC, VsBat, VsHV, current_converted, num_rows, all_cell_voltages, all_cell_temps
+    global timestamps, SoC, VsBat, VsHV, current_converted, num_rows, all_cell_voltages, all_cell_temps, n_actual, t_motor, t_igbt
 
     # Read the CSV file, skipping the second line
     df = pd.read_csv(file_path, header=0, skiprows=[1])
@@ -92,6 +95,9 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     VsBat = df.iloc[:, VsBat_col-1].tolist()  # Store VsBat data
     VsHV = df.iloc[:, VsHV_col-1].tolist()  # Store VsHV data
     curr = df.iloc[:, curr_col-1].tolist()  # Store current data
+    n_actual = [-v for v in df.iloc[:, N_ACTUAL_COL-1].tolist()] # Store negated RPM data (corresponding to motor mounting direciton, forward is negative)
+    t_motor = df.iloc[:, T_MOTOR_COL-1].tolist()  # Store RPM data
+    t_igbt = df.iloc[:, T_IGBT_COL-1].tolist()  # Store RPM data
     current_converted = [calc_curr(i)
                          for i in curr]  # Convert current to Amperes
 
@@ -265,6 +271,7 @@ class BatteryManagementSystem:
         self.create_overview_tab()
         self.create_voltages_tab()
         self.create_temps_tab()
+        self.create_motor_controller_tab()
 
     def open_file(self):
         """ Opens a file dialog to select a CSV file. """
@@ -674,6 +681,45 @@ class BatteryManagementSystem:
             self.o_canvas.yview_moveto(0)
         self.overview_frame.bind('<Configure>', on_frame_configure)
 
+    def create_motor_controller_tab(self):
+        """ Creates the motor controller tab with information about the motor controller. """
+
+        self.motor_controller_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.motor_controller_tab, text='Motor Controller')
+
+        # --- Add vertical and horizontal scrollbars using Canvas ---
+        self.motor_controller_view_frame = ttk.Frame(
+            self.motor_controller_tab, padding=(10, 5))
+        self.motor_controller_view_frame.pack(
+            padx=10, pady=5, fill=BOTH, expand=True)
+
+        # Canvas for scrollable content
+        self.o_canvas = Canvas(self.motor_controller_view_frame, borderwidth=0)
+        self.o_canvas.pack(side=LEFT, fill=BOTH, expand=True)
+
+        # Vertical scrollbar
+        self.o_scrollbar = ttk.Scrollbar(
+            self.motor_controller_view_frame, orient=VERTICAL, command=self.o_canvas.yview)
+        self.o_scrollbar.pack(side=RIGHT, fill=Y)
+        self.o_canvas.configure(yscrollcommand=self.o_scrollbar.set)
+
+        # Horizontal scrollbar
+        self.o_hscrollbar = ttk.Scrollbar(
+            self.motor_controller_view_frame, orient=HORIZONTAL, command=self.o_canvas.xview)
+        self.o_hscrollbar.pack(side=BOTTOM, fill=X)
+        self.o_canvas.configure(xscrollcommand=self.o_hscrollbar.set)
+        # Frame inside canvas for actual content
+        self.motor_controller_frame = ttk.Frame(self.o_canvas)
+        self.o_canvas.create_window(
+            (0, 0), window=self.motor_controller_frame, anchor='nw')
+
+        # Make the canvas scrollable
+        def on_frame_configure(event):
+            self.o_canvas.configure(scrollregion=self.o_canvas.bbox('all'))
+            self.o_canvas.xview_moveto(0)
+            self.o_canvas.yview_moveto(0)
+        self.motor_controller_frame.bind('<Configure>', on_frame_configure)
+
     def create_dynamic_widgets(self, stack_rows, stack_cols, cells, temps, UV, OV, UT, OT):
         """ Creates dynamic widgets for voltages and temperatures based on user input.
 
@@ -809,7 +855,7 @@ class BatteryManagementSystem:
             """
             sub_plot_frame = ttk.Frame(self.plot_frame)
             sub_plot_frame.grid(row=ro, column=col, padx=2, pady=2)
-            plt.style.use('Solarize_Light2')  # Use dark background style
+            plt.style.use('Solarize_Light2')
             fig, ax = plt.subplots(figsize=(6, 4.2))
             canvas = FigureCanvasTkAgg(fig, master=sub_plot_frame)
             canvas.get_tk_widget().grid(row=0, column=0, padx=2, pady=2)
@@ -855,7 +901,8 @@ class BatteryManagementSystem:
         # Power
         power = []
         for i in (range(len(total_pack_voltage_arr))):
-            temp_power = total_pack_voltage_arr[i] * current_converted[i] / 1000.0
+            temp_power = total_pack_voltage_arr[i] * \
+                current_converted[i] / 1000.0
             power.append(temp_power)
             temp_power = 0.0
         overview_plots(1, 0, power, 'Power', 'kW')
@@ -943,6 +990,41 @@ class BatteryManagementSystem:
             self.stack_value.grid(row=stack_index, column=1, padx=5, pady=5)
             self.stack_unit = ttk.Label(self.ASV_frame, text='V')
             self.stack_unit.grid(row=stack_index, column=2, padx=5, pady=5)
+
+        # Filling motor controller tab
+        def motor_controller_plots(ro, col, data, title, unit, top_lim=None, bot_lim=None):
+            """ Creates a plot in the motor controller tab.
+
+                :param ro: Row index for the plot.
+                :param col: Column index for the plot.
+                :param data: Data to plot.
+                :param title: Title for the plot.
+            """
+            sub_plot_frame = ttk.Frame(self.motor_controller_frame)
+            sub_plot_frame.grid(row=ro, column=col, padx=2, pady=2)
+            plt.style.use('Solarize_Light2')
+            fig, ax = plt.subplots(figsize=(8, 6))
+            canvas = FigureCanvasTkAgg(fig, master=sub_plot_frame)
+            canvas.get_tk_widget().grid(row=0, column=0, padx=2, pady=2)
+            ax.plot(timestamps, data)
+            ax.set_xlabel('Time (hh:mm:ss.ms)')
+            ax.set_ylabel(f'{title} ({unit})')
+            ax.set_title(title)
+            ax.set_ylim(top=top_lim, bottom=bot_lim)
+            ax.xaxis.set_major_locator(ticker.AutoLocator())
+            ax.xaxis.set_minor_locator(ticker.AutoLocator())
+            ax.grid(True)
+            mplcursors.cursor(hover=True)
+            canvas.draw()
+            plt.close(fig)
+            expand_button = ttk.Button(
+                sub_plot_frame, text='Expand', command=lambda: plot_data(
+                    timestamps, data, 'Time (hh:mm:ss.ms)', f'{title} ({unit})', title, 'show', top_lim, bot_lim))
+            expand_button.grid(row=1, column=0, padx=2, pady=8, sticky='new')
+
+        motor_controller_plots(0, 0, n_actual, 'Actual Speed', 'RPM')
+        motor_controller_plots(0, 1, t_motor, 'Motor Temperature', '°C')
+        motor_controller_plots(1, 0, t_igbt, 'IGBT Temperature', '°C')
 
         # Get the file name from the path
         file_name = self.file_path.split('/')[-1]
