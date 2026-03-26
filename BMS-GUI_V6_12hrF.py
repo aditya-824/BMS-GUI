@@ -11,9 +11,9 @@ import matplotlib.ticker as ticker
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
                                                NavigationToolbar2Tk)
 import pandas as pd
+import openpyxl
 # import serial
 import mplcursors
-
 
 # CONSTANTS
 DEFAULT_STACK_ROWS = 3  # Default number of stacks in a row
@@ -123,6 +123,23 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
         for j in range(len(all_cell_temps[i])):
             all_cell_temps[i][j] = [calc_temp(temp)
                                     for temp in all_cell_temps[i][j]]
+
+
+def read_lap_times(file_path):
+    """ Reads lap times from a CSV file and returns them as a list.
+
+        :param file_path: Path to the CSV file.
+        :returns: List of lap times.
+    """
+    lap_times = [[]]
+    df = openpyxl.load_workbook(file_path)
+    df1 = df.active
+    for row in range(0, df1.max_row):
+        for col in range(2):
+            lap_times[col].append(df1.cell(row=row+1, column=col+1).value)
+            lap_times[col].append(df1.cell(row=row+1, column=col+2).value)
+
+    print(lap_times)
 
 
 def plot_data(x, y, x_label, y_label, title, do, type='', top_lim=None, bot_lim=None):
@@ -464,13 +481,13 @@ class BatteryManagementSystem:
         self.current_frame.grid(
             row=1, column=1, padx=10, pady=5, sticky='nsew')
         self.ca_start_time_label = ttk.Label(
-            self.current_frame, text='Start time (s):')
+            self.current_frame, text='Start time (hh:mm:ss.ms):')
         self.ca_start_time_label.grid(
             row=0, column=0, padx=5, pady=5, sticky='e')
         self.ca_start_time_entry = ttk.Entry(self.current_frame, width=10)
         self.ca_start_time_entry.grid(row=0, column=1, padx=5, pady=5)
         self.ca_end_time_label = ttk.Label(
-            self.current_frame, text='End time (s):')
+            self.current_frame, text='End time (hh:mm:ss.ms):')
         self.ca_end_time_label.grid(
             row=0, column=2, padx=5, pady=5, sticky='e')
         self.ca_end_time_entry = ttk.Entry(self.current_frame, width=10)
@@ -484,6 +501,12 @@ class BatteryManagementSystem:
         self.ca_graph_button = ttk.Button(
             self.current_frame, text='Plot Current', command=plot_curr)
         self.ca_graph_button.grid(row=1, column=2, padx=5, pady=5)
+
+        # # Lap times frame
+        # self.lap_frame = ttk.LabelFrame(self.settings_tab, text='Lap Times', padding=(10, 5))
+        # self.lap_frame.grid(row=2, column=0, padx=10, pady=5, sticky='nsew')
+        # self.lap_file_label = ttk.Label(self.lap_frame, text='Lap Times File:')
+        # self.lap_file_label.grid(row=0, column=0, padx=5, pady=5, sticky='e')
 
         # Communication Settings Frame
         # self.comm_frame = ttk.LabelFrame(self.settings_tab, text='Communication Settings', padding=(10, 5))
@@ -702,7 +725,7 @@ class BatteryManagementSystem:
                 for cell in range(cells):
                     # Cell voltages with plot buttons
                     cell_button = ttk.Button(stack_frame, text=f'Cell {cell + 1}', command=lambda s=stack_index, c=cell: plot_data(
-                        timestamps, all_cell_voltages[s][c], 'Time (s)', 'Voltage (V)', f'Stack {s + 1} Cell {c + 1} Voltage', 'show', 'voltages'))
+                        timestamps, all_cell_voltages[s][c], 'Time (hh:mm:ss.ms)', 'Voltage (V)', f'Stack {s + 1} Cell {c + 1} Voltage', 'show', 'voltages'))
                     cell_button.grid(row=cell, column=0, padx=5, pady=5)
                     avg_cell_voltage = np.mean(
                         all_cell_voltages[stack_index][cell])
@@ -719,11 +742,11 @@ class BatteryManagementSystem:
 
                 # Plot all button
                 stack_v_plot_button = ttk.Button(stack_frame, text='Plot All', command=lambda s=stack_index: plot_data(
-                    timestamps, all_cell_voltages[s], 'Time (s)', 'Voltage (V)', f'Stack {s + 1} Voltages', 'show', 'voltages'))
+                    timestamps, all_cell_voltages[s], 'Time (hh:mm:ss.ms)', 'Voltage (V)', f'Stack {s + 1} Voltages', 'show', 'voltages'))
                 stack_v_plot_button.grid(
                     row=cells, column=0, columnspan=2, padx=5, pady=5)
         save_v_graphs_button = ttk.Button(
-            self.voltages_frame, text='Save Stack Voltage Graphs', command=lambda: save_graphs(stack_rows, stack_cols, timestamps, all_cell_voltages, 'Time (s)', 'Voltage (V)', 'voltages'))
+            self.voltages_frame, text='Save Stack Voltage Graphs', command=lambda: save_graphs(stack_rows, stack_cols, timestamps, all_cell_voltages, 'Time (hh:mm:ss.ms)', 'Voltage (V)', 'voltages'))
         save_v_graphs_button.grid(
             row=stack_rows, column=0, columnspan=stack_cols, padx=5, pady=5, sticky='ew')
 
@@ -741,7 +764,7 @@ class BatteryManagementSystem:
                     # Cell temperatures with plot buttons
                     temp_button = ttk.Button(
                         stack_frame, text=f'Temp. {temp + 1}', command=lambda s=stack_index, t=temp: plot_data(
-                            timestamps, all_cell_temps[s][t], 'Time (s)', 'Temperature (°C)', f'Stack {s + 1} Temperature {t + 1}', 'show', 'temps'))
+                            timestamps, all_cell_temps[s][t], 'Time (hh:mm:ss.ms)', 'Temperature (°C)', f'Stack {s + 1} Temperature {t + 1}', 'show', 'temps'))
                     temp_button.grid(row=temp, column=0, padx=5, pady=5)
                     avg_cell_temp = np.mean(
                         all_cell_temps[stack_index][temp])
@@ -762,11 +785,11 @@ class BatteryManagementSystem:
                 temp_delta_unit.grid(row=temps, column=2, padx=5, pady=5)
                 # Plot all button
                 stack_t_plot_button = ttk.Button(stack_frame, text='Plot All', command=lambda s=stack_index: plot_data(
-                    timestamps, all_cell_temps[s], 'Time (s)', 'Temperature (°C)', f'Stack {s + 1} Temperatures', 'show', 'temps'))
+                    timestamps, all_cell_temps[s], 'Time (hh:mm:ss.ms)', 'Temperature (°C)', f'Stack {s + 1} Temperatures', 'show', 'temps'))
                 stack_t_plot_button.grid(
                     row=temps+1, column=0, columnspan=3, padx=5, pady=5)
         save_t_graphs_button = ttk.Button(
-            self.temps_frame, text='Save Stack Temp. Graphs', command=lambda: save_graphs(stack_rows, stack_cols, timestamps, all_cell_temps, 'Time (s)', 'Temperature (°C)', 'temps'))
+            self.temps_frame, text='Save Stack Temp. Graphs', command=lambda: save_graphs(stack_rows, stack_cols, timestamps, all_cell_temps, 'Time (hh:mm:ss.ms)', 'Temperature (°C)', 'temps'))
         save_t_graphs_button.grid(
             row=stack_rows, column=0, columnspan=stack_cols, padx=5, pady=5, sticky='ew')
 
@@ -803,7 +826,7 @@ class BatteryManagementSystem:
             plt.close(fig)
             expand_button = ttk.Button(
                 sub_plot_frame, text='Expand', command=lambda: plot_data(
-                    timestamps, data, 'Time (s)', f'{title} ({unit})', title, 'show', top_lim, bot_lim))
+                    timestamps, data, 'Time (hh:mm:ss.ms)', f'{title} ({unit})', title, 'show', top_lim, bot_lim))
             expand_button.grid(row=1, column=0, padx=2, pady=8, sticky='new')
 
         # SoC
@@ -829,6 +852,13 @@ class BatteryManagementSystem:
             temp_pack_voltage = 0.0
         overview_plots(0, 1, total_pack_voltage_arr,
                        'Total Pack Voltage', 'V', 453.6, 270)
+        # Power
+        power = []
+        for i in (range(len(total_pack_voltage_arr))):
+            temp_power = total_pack_voltage_arr[i] * current_converted[i] / 1000.0
+            power.append(temp_power)
+            temp_power = 0.0
+        overview_plots(1, 0, power, 'Power', 'kW')
 
         # Data & Stacks frame
         self.d_n_s_frame = ttk.Frame(self.overview_frame, padding=(10, 5))

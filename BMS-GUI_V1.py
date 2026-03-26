@@ -240,7 +240,7 @@ class BatteryManagementSystem:
         def on_frame_configure(event):
             self.v_canvas.configure(scrollregion=self.v_canvas.bbox('all'))
         self.voltages_frame.bind('<Configure>', on_frame_configure)
-        
+
     def create_overview_tab(self):
         self.overview_tab = ttk.Frame(self.notebook)
         self.notebook.add(self.overview_tab, text='Overview')

@@ -11,7 +11,6 @@ import pandas as pd
 # import serial
 import mplcursors
 
-
 # CONSTANTS
 DEFAULT_STACK_ROWS = 3  # Default number of stacks in a row
 DEFAULT_STACK_COLS = 6  # Default number of stacks in a column
