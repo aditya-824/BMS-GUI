@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import pandas as pd
-import openpyxl
+# import openpyxl
 # import serial
 import mplcursors
 
@@ -163,21 +163,21 @@ def read_file(file_path, cells, temps, timestamp_col, SoC_col, VsBat_col, VsHV_c
         indiv_cell_temps = []
 
 
-def read_lap_times(file_path):
-    """ Reads lap times from a CSV file and returns them as a list.
+# def read_lap_times(file_path):
+#     """ Reads lap times from a CSV file and returns them as a list.
 
-        :param file_path: Path to the CSV file.
-        :returns: List of lap times.
-    """
-    lap_times = [[]]
-    df = openpyxl.load_workbook(file_path)
-    df1 = df.active
-    for row in range(0, df1.max_row):
-        for col in range(2):
-            lap_times[col].append(df1.cell(row=row+1, column=col+1).value)
-            lap_times[col].append(df1.cell(row=row+1, column=col+2).value)
+#         :param file_path: Path to the CSV file.
+#         :returns: List of lap times.
+#     """
+#     lap_times = [[]]
+#     df = openpyxl.load_workbook(file_path)
+#     df1 = df.active
+#     for row in range(0, df1.max_row):
+#         for col in range(2):
+#             lap_times[col].append(df1.cell(row=row+1, column=col+1).value)
+#             lap_times[col].append(df1.cell(row=row+1, column=col+2).value)
 
-    print(lap_times)
+#     print(lap_times)
 
 
 def plot_data(x, y, x_label, y_label, title, do, type='', top_lim=None, bot_lim=None):
@@ -814,6 +814,8 @@ class BatteryManagementSystem:
         for widget in self.voltages_frame.winfo_children():
             widget.destroy()
         for widget in self.temps_frame.winfo_children():
+            widget.destroy()
+        for widget in self.motor_controller_frame.winfo_children():
             widget.destroy()
 
         def save_graphs(stack_rows, stack_cols, x, y, x_label, y_label, type):
