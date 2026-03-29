@@ -4,16 +4,16 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from tkinter import filedialog
 from tkinter import messagebox
-from ttkthemes import ThemedTk
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
-                                               NavigationToolbar2Tk)
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import pandas as pd
 import openpyxl
 # import serial
 import mplcursors
+
+plt.style.use('Solarize_Light2')
 
 # CONSTANTS
 DEFAULT_STACK_ROWS = 3  # Default number of stacks in a row
@@ -31,9 +31,11 @@ SOC_COL = 182
 VSBAT_COL = 183
 VSHV_COL = 184
 CURR_COL = 185
-N_ACTUAL_COL = 186
-T_MOTOR_COL = 187
-T_IGBT_COL = 188
+I_ACTUAL_COL = 186
+N_ACTUAL_COL = 187
+T_MOTOR_COL = 188
+T_IGBT_COL = 189
+I_ACTUAL_FLAG = True  # Flag to indicate if actual current data is present
 
 
 # GLOBAL VARIABLES
@@ -45,6 +47,8 @@ SoC = []
 VsBat = []
 VsHV = []
 curr = []
+i_actual = []
+timestamps_numeric = np.array([], dtype=np.int64)
 num_rows = 0  # Number of rows in the DataFrame
 file_name = ''
 
@@ -70,7 +74,17 @@ def serial_ports():
     return comms
 
 
-def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, SoC_col, VsBat_col, VsHV_col, curr_col):
+def parse_time_to_numeric(value):
+    """Converts a timestamp-like value to a zero-right-padded integer."""
+    digits = ''.join(filter(str.isdigit, str(value)))
+    if not digits:
+        return None
+    if len(digits) < 15:
+        digits = digits.ljust(15, '0')
+    return int(digits)
+
+
+def read_file(file_path, cells, temps, timestamp_col, SoC_col, VsBat_col, VsHV_col, curr_col, i_actual_flag):
     """ Reads a CSV file and returns its content as a pandas DataFrame.
 
         :param file_path: Path to the CSV file.
@@ -78,12 +92,12 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     """
     indiv_cell_voltages = []  # List to store individual cell voltages
     indiv_cell_temps = []  # List to store individual cell temperatures
-    global timestamps, SoC, VsBat, VsHV, current_converted, num_rows, all_cell_voltages, all_cell_temps, n_actual, t_motor, t_igbt
+    global timestamps, timestamps_numeric, SoC, VsBat, VsHV, curr, current_converted, num_rows, all_cell_voltages, all_cell_temps, i_actual, n_actual, t_motor, t_igbt, torque
 
     # Read the CSV file, skipping the second line
     df = pd.read_csv(file_path, header=0, skiprows=[1])
     # Only keep every 20th row after the second line
-    df = df.iloc[::20, :].reset_index(drop=True)
+    # df = df.iloc[::20, :].reset_index(drop=True)
 
     cols = df.columns.tolist()  # Get the list of column names
     num_rows = 0
@@ -91,15 +105,38 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     # Store timestamps from the first column and trim each entry
     timestamps = [str(ts)[11:-6]
                   for ts in df.iloc[:, timestamp_col-1].tolist()]
+    timestamps_numeric = np.array([
+        parse_time_to_numeric(ts) or 0 for ts in timestamps
+    ], dtype=np.int64)
     SoC = df.iloc[:, SoC_col-1].tolist()  # Store SoC data
     VsBat = df.iloc[:, VsBat_col-1].tolist()  # Store VsBat data
     VsHV = df.iloc[:, VsHV_col-1].tolist()  # Store VsHV data
-    curr = df.iloc[:, curr_col-1].tolist()  # Store current data
-    n_actual = [-v for v in df.iloc[:, N_ACTUAL_COL-1].tolist()] # Store negated RPM data (corresponding to motor mounting direciton, forward is negative)
-    t_motor = df.iloc[:, T_MOTOR_COL-1].tolist()  # Store RPM data
-    t_igbt = df.iloc[:, T_IGBT_COL-1].tolist()  # Store RPM data
-    current_converted = [calc_curr(i)
-                         for i in curr]  # Convert current to Amperes
+    curr_arr = df.iloc[:, curr_col-1].to_numpy(dtype=float, copy=False)
+    curr = curr_arr.tolist()  # Store current data
+    if (i_actual_flag):
+        # Store negated actual current data
+        i_actual = (-df.iloc[:, I_ACTUAL_COL -
+                    1].to_numpy(dtype=float, copy=False)).tolist()
+        # Torque approximation from current
+        torque = [max(0, value * 0.75) for value in i_actual]
+        N_ACTUAL_COL = I_ACTUAL_COL + 1
+        T_MOTOR_COL = I_ACTUAL_COL + 2
+        T_IGBT_COL = I_ACTUAL_COL + 3
+    else:
+        N_ACTUAL_COL = I_ACTUAL_COL
+        T_MOTOR_COL = I_ACTUAL_COL + 1
+        T_IGBT_COL = I_ACTUAL_COL + 2
+    # Store negated RPM data (corresponding to motor mounting direciton, forward is negative)
+    n_actual = (-df.iloc[:, N_ACTUAL_COL-1].to_numpy(
+        dtype=float, copy=False)).tolist()
+    # Store raw motor temperature data
+    raw_t_motor = df.iloc[:, T_MOTOR_COL-1].to_numpy(dtype=float, copy=False)
+    t_motor = calc_motor_temp(raw_t_motor).tolist()
+    # Store raw IGBT temperature data
+    raw_t_igbt = df.iloc[:, T_IGBT_COL-1].to_numpy(dtype=float, copy=False)
+    t_igbt = calc_igbt_temp(raw_t_igbt).tolist()
+    # Convert current to Amperes
+    current_converted = calc_curr(curr_arr).tolist()
 
     new_cols = []
     for i in range(timestamp_col, LAST_CELL_DATA_COL, 4):
@@ -115,20 +152,15 @@ def read_file(file_path, stack_rows, stack_cols, cells, temps, timestamp_col, So
     for stack_data in range(timestamp_col, LAST_CELL_DATA_COL, cells+temps):
         for cell in range(cells):
             indiv_cell_voltages.append(
-                df_new.iloc[:, stack_data + cell].tolist())
+                df_new.iloc[:, stack_data + cell].to_numpy(dtype=float, copy=False).tolist())
         all_cell_voltages.append(indiv_cell_voltages)
         indiv_cell_voltages = []  # Reset for the next stack
         for temp in range(temps):
-            indiv_cell_temps.append(
-                df_new.iloc[:, stack_data + cells + temp].tolist())
+            raw_temp = df_new.iloc[:, stack_data + cells +
+                                   temp].to_numpy(dtype=float, copy=False)
+            indiv_cell_temps.append(calc_temp(raw_temp).tolist())
         all_cell_temps.append(indiv_cell_temps)
         indiv_cell_temps = []
-
-    # Converting temperature values to Celsius
-    for i in range(len(all_cell_temps)):
-        for j in range(len(all_cell_temps[i])):
-            all_cell_temps[i][j] = [calc_temp(temp)
-                                    for temp in all_cell_temps[i][j]]
 
 
 def read_lap_times(file_path):
@@ -158,7 +190,6 @@ def plot_data(x, y, x_label, y_label, title, do, type='', top_lim=None, bot_lim=
         :param title: Title of the plot."""
 
     lines = []
-    plt.style.use('Solarize_Light2')
     fig, ax = plt.subplots()
 
     if (type == 'voltages'):
@@ -210,6 +241,7 @@ def calc_temp(raw_temp):
         :param raw_temp: Raw temperature value.
         :returns: Temperature in Celsius.
     """
+    raw_temp = np.asarray(raw_temp, dtype=float)
     r_inf = 10000 * np.exp(-3435 / 298.15)
     R = raw_temp / (3.0 - (raw_temp * 0.0001))  # Calculate resistance
     return ((3435 / np.log(R / r_inf)) - 273.15)  # Convert to Celsius
@@ -222,9 +254,55 @@ def calc_curr(raw_curr):
         :returns: Current in Amperes.
     """
     # Assuming raw_curr is in mA, convert to A
+    raw_curr = np.asarray(raw_curr, dtype=float)
     voltage = raw_curr * 5.0 / 1023.0
     current = ((voltage - 2.4929) / 0.0057)
     return current
+
+
+def calc_motor_temp(raw_motor_temp):
+    """ Calculates motor temperature from a raw sensor value.
+
+        :param raw_motor_temp: Raw motor temperature value.
+        :returns: Motor temperature in Celsius.
+    """
+    raw_motor_temp = np.asarray(raw_motor_temp, dtype=float)
+    # EMRAX motor temperature regression model
+    p1 = -1.387e-16
+    p2 = 3.164e-11
+    p3 = -1.009e-06
+    p4 = 0.027410
+    p5 = -196.9
+    motor_temp = (
+        p1 * (raw_motor_temp ** 4)
+        + p2 * (raw_motor_temp ** 3)
+        + p3 * (raw_motor_temp ** 2)
+        + p4 * raw_motor_temp
+        + p5
+    )
+    return motor_temp
+
+
+def calc_igbt_temp(raw_igbt_temp):
+    """ Calculates IGBT temperature from a raw sensor value.
+
+        :param raw_igbt_temp: Raw IGBT temperature value.
+        :returns: IGBT temperature in Celsius.
+    """
+    raw_igbt_temp = np.asarray(raw_igbt_temp, dtype=float)
+    p1 = -2.8e-15
+    p2 = 3.375e-10
+    p3 = -1.426e-05
+    p4 = 0.26510
+    p5 = -1810
+    igbt_temp = (
+        p1 * (raw_igbt_temp ** 4)
+        + p2 * (raw_igbt_temp ** 3)
+        + p3 * (raw_igbt_temp ** 2)
+        + p4 * raw_igbt_temp
+        + p5
+    )
+    return igbt_temp
 
 
 def check_status(value, lower, upper):
@@ -407,37 +485,33 @@ class BatteryManagementSystem:
         self.current_entry = ttk.Entry(self.columns_frame, width=5)
         self.current_entry.insert(0, CURR_COL)
         self.current_entry.grid(row=0, column=9, padx=5, pady=5)
+        # I Actual flag
+        self.i_actual_label = ttk.Label(
+            self.columns_frame, text='Actual Current Data Present:')
+        self.i_actual_label.grid(row=1, column=0, padx=5, pady=10, sticky='e')
+        self.i_actual_check = ttk.Checkbutton(self.columns_frame)
+        self.i_actual_check.grid(row=1, column=1, padx=5, pady=10)
 
         # Current Avg Settings Frame
         def get_avg_current():
             """ Calculates and displays the average current over the specified time interval. """
 
-            start_time = self.ca_start_time_entry.get()
-            start_time = int(''.join(filter(str.isdigit, start_time)))
-            while (len(str(start_time)) < 15):
-                start_time *= 10
-            print(start_time)
-            end_time = self.ca_end_time_entry.get()
-            end_time = int(''.join(filter(str.isdigit, end_time)))
-            while (len(str(end_time)) < 15):
-                end_time *= 10
-            print(end_time)
+            start_time = parse_time_to_numeric(self.ca_start_time_entry.get())
+            end_time = parse_time_to_numeric(self.ca_end_time_entry.get())
 
             # Validate input: check if times are not empty and not equal
-            if not start_time or not end_time or start_time == end_time:
+            if start_time is None or end_time is None or start_time >= end_time:
                 messagebox.showerror(
                     "Invalid Input", "Enter valid start and end times.")
                 return
 
             # Find indices corresponding to the specified time interval
-            start_index = next(
-                (i for i, t in enumerate(timestamps) if int(''.join(filter(str.isdigit, t))) >= start_time), None)
-            print(timestamps[start_index])
-            end_index = next(
-                (i for i, t in enumerate(timestamps) if int(''.join(filter(str.isdigit, t))) > end_time), None)
-            print(timestamps[end_index-1])
+            start_index = int(np.searchsorted(
+                timestamps_numeric, start_time, side='left'))
+            end_index = int(np.searchsorted(
+                timestamps_numeric, end_time, side='right'))
 
-            if start_index is None or end_index is None:
+            if start_index >= len(timestamps_numeric) or end_index <= start_index:
                 messagebox.showerror(
                     "Invalid Input", "Time interval out of range.")
                 return
@@ -453,24 +527,21 @@ class BatteryManagementSystem:
         def plot_curr():
             """ Plots the current over the specified time interval. """
 
-            start_time = self.ca_start_time_entry.get()
-            start_time = int(''.join(filter(str.isdigit, start_time)))
-            while (len(str(start_time)) < 15):
-                start_time *= 10
-            print(start_time)
-            end_time = self.ca_end_time_entry.get()
-            end_time = int(''.join(filter(str.isdigit, end_time)))
-            while (len(str(end_time)) < 15):
-                end_time *= 10
-            print(end_time)
+            start_time = parse_time_to_numeric(self.ca_start_time_entry.get())
+            end_time = parse_time_to_numeric(self.ca_end_time_entry.get())
+
+            if start_time is None or end_time is None or start_time >= end_time:
+                messagebox.showerror(
+                    "Invalid Input", "Enter valid start and end times.")
+                return
 
             # Find indices corresponding to the specified time interval
-            start_index = next(
-                (i for i, t in enumerate(timestamps) if int(''.join(filter(str.isdigit, t))) >= int(''.join(filter(str.isdigit, str(start_time))))), None)
-            end_index = next(
-                (i for i, t in enumerate(timestamps) if int(''.join(filter(str.isdigit, t))) > int(''.join(filter(str.isdigit, str(end_time))))), None)
+            start_index = int(np.searchsorted(
+                timestamps_numeric, start_time, side='left'))
+            end_index = int(np.searchsorted(
+                timestamps_numeric, end_time, side='right'))
 
-            if start_index is None or end_index is None:
+            if start_index >= len(timestamps_numeric) or end_index <= start_index:
                 messagebox.showerror(
                     "Invalid Input", "Time interval out of range.")
                 return
@@ -552,12 +623,13 @@ class BatteryManagementSystem:
             VsBat_col = int(self.VsBat_entry.get())
             VsHV_col = int(self.VsHV_entry.get())
             curr_col = int(self.current_entry.get())
+            i_actual_flag = self.i_actual_check.instate(['selected'])
 
-            read_file(self.file_path, stack_rows, stack_cols, cells,
-                      # Read the CSV file to update data
-                      temps, timestamp_col, SoC_col, VsBat_col, VsHV_col, curr_col)
+            # Read the CSV file to update data
+            read_file(self.file_path, cells,
+                      temps, timestamp_col, SoC_col, VsBat_col, VsHV_col, curr_col, i_actual_flag)
             self.create_dynamic_widgets(
-                stack_rows, stack_cols, cells, temps, UV, OV, UT, OT)
+                stack_rows, stack_cols, cells, temps, UV, OV, UT, OT, i_actual_flag)
 
         # Confirm Settings Button
         self.confirm_button = ttk.Button(
@@ -720,13 +792,14 @@ class BatteryManagementSystem:
             self.o_canvas.yview_moveto(0)
         self.motor_controller_frame.bind('<Configure>', on_frame_configure)
 
-    def create_dynamic_widgets(self, stack_rows, stack_cols, cells, temps, UV, OV, UT, OT):
+    def create_dynamic_widgets(self, stack_rows, stack_cols, cells, temps, UV, OV, UT, OT, i_actual_flag):
         """ Creates dynamic widgets for voltages and temperatures based on user input.
 
             :param stack_rows: Number of rows of stacks.
             :param stack_cols: Number of columns of stacks.
             :param cells: Number of cells per stack.
             :param temps: Number of temperature sensors per stack.
+            :param i_actual_flag: Flag indicating if actual current data is present.
         """
         global total_pack_voltage, SoC, VsBat, VsHV, current_converted, red, blue, green, num_rows, file_name
         total_pack_voltage = 0.0  # Reset total pack voltage
@@ -855,7 +928,6 @@ class BatteryManagementSystem:
             """
             sub_plot_frame = ttk.Frame(self.plot_frame)
             sub_plot_frame.grid(row=ro, column=col, padx=2, pady=2)
-            plt.style.use('Solarize_Light2')
             fig, ax = plt.subplots(figsize=(6, 4.2))
             canvas = FigureCanvasTkAgg(fig, master=sub_plot_frame)
             canvas.get_tk_widget().grid(row=0, column=0, padx=2, pady=2)
@@ -884,27 +956,14 @@ class BatteryManagementSystem:
         # Current
         overview_plots(0, 0, current_converted, 'Current', 'A')
         # Total Pack Voltage
-        total_pack_voltage_arr = []  # List to store total pack voltages for plotting
-        total_pack_voltage_arr.clear()  # Clear previous data
-        temp_stack_voltage = 0.0  # Reset temp stack voltage
-        temp_pack_voltage = 0.0  # Reset temp pack voltage
-        for row in range(num_rows):
-            for stack in range(stack_rows * stack_cols):
-                for cell in range(cells):
-                    temp_stack_voltage += all_cell_voltages[stack][cell][row]
-                temp_pack_voltage += temp_stack_voltage
-                temp_stack_voltage = 0.0
-            total_pack_voltage_arr.append(temp_pack_voltage)
-            temp_pack_voltage = 0.0
+        voltage_np = np.asarray(all_cell_voltages, dtype=float)
+        total_pack_voltage_arr = voltage_np.sum(
+            axis=(0, 1)).tolist()  # Sum across stack and cell axes
         overview_plots(0, 1, total_pack_voltage_arr,
                        'Total Pack Voltage', 'V', 453.6, 270)
         # Power
-        power = []
-        for i in (range(len(total_pack_voltage_arr))):
-            temp_power = total_pack_voltage_arr[i] * \
-                current_converted[i] / 1000.0
-            power.append(temp_power)
-            temp_power = 0.0
+        power = (np.asarray(total_pack_voltage_arr, dtype=float) *
+                 np.asarray(current_converted, dtype=float) / 1000.0).tolist()
         overview_plots(1, 0, power, 'Power', 'kW')
 
         # Data & Stacks frame
@@ -1002,7 +1061,6 @@ class BatteryManagementSystem:
             """
             sub_plot_frame = ttk.Frame(self.motor_controller_frame)
             sub_plot_frame.grid(row=ro, column=col, padx=2, pady=2)
-            plt.style.use('Solarize_Light2')
             fig, ax = plt.subplots(figsize=(8, 6))
             canvas = FigureCanvasTkAgg(fig, master=sub_plot_frame)
             canvas.get_tk_widget().grid(row=0, column=0, padx=2, pady=2)
@@ -1025,6 +1083,9 @@ class BatteryManagementSystem:
         motor_controller_plots(0, 0, n_actual, 'Actual Speed', 'RPM')
         motor_controller_plots(0, 1, t_motor, 'Motor Temperature', '°C')
         motor_controller_plots(1, 0, t_igbt, 'IGBT Temperature', '°C')
+        if (i_actual_flag):
+            motor_controller_plots(1, 1, i_actual, 'Actual Current', 'A (rms)')
+            motor_controller_plots(2, 0, torque, 'Torque', 'nm')
 
         # Get the file name from the path
         file_name = self.file_path.split('/')[-1]
