@@ -328,7 +328,7 @@ class BatteryManagementSystem:
             :param root: The root Tkinter window.
         """
         self.root = root
-        self.root.title("BMS")
+        self.root.title("Athena DAQ GUI")
         self.root.iconbitmap('icon.ico')
 
         self.file_path = ""  # Initialize file path as instance variable
@@ -609,7 +609,7 @@ class BatteryManagementSystem:
         def update_data():
             """ Updates the instance variables with the values from the input fields. """
 
-            self.root.title("BMS - Loading...")
+            self.root.title("Athena DAQ GUI - Loading...")
             stack_rows = int(self.stack_rows_entry.get())
             stack_cols = int(self.stack_cols_entry.get())
             cells = int(self.cells_entry.get())
@@ -821,7 +821,7 @@ class BatteryManagementSystem:
 
                 :param title: The title to use for the saved files.
             """
-            self.root.title("BMS - Saving Graphs...")
+            self.root.title("Athena DAQ GUI - Saving Graphs...")
             for stack_index in range(stack_rows * stack_cols):
                 if (type == 'voltages'):
                     plot_data(x, y[stack_index], x_label, y_label,
@@ -829,7 +829,7 @@ class BatteryManagementSystem:
                 else:
                     plot_data(x, y[stack_index], x_label, y_label,
                               f'Stack {stack_index+1} Temperatures', 'save', type)
-            self.root.title(f"BMS - {file_name}")
+            self.root.title(f"Athena DAQ GUI - {file_name}")
 
         # Creating voltage widget grid
         for row in range(stack_rows):
@@ -1090,7 +1090,7 @@ class BatteryManagementSystem:
         # Get the file name from the path
         file_name = self.file_path.split('/')[-1]
         # Update window title with file name
-        self.root.title(f"BMS - {file_name}")
+        self.root.title(f"Athena DAQ GUI - {file_name}")
 
 
 def main():
