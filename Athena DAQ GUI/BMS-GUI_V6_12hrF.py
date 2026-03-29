@@ -55,23 +55,23 @@ file_name = ''
 
 # FUNCTIONS
 
-# def serial_ports():
-#     """ Lists serial port names
+def serial_ports():
+    """ Lists serial port names
 
-#         :returns: A list of the serial ports available on the system
-#     """
+        :returns: A list of the serial ports available on the system
+    """
 
-#     ports = ['COM%s' % (i + 1) for i in range(256)]
+    ports = ['COM%s' % (i + 1) for i in range(256)]
 
-#     comms = []
-#     for port in ports:
-#         try:
-#             s = serial.Serial(port)
-#             s.close()
-#             comms.append(port)
-#         except (OSError, serial.SerialException):
-#             pass
-#     return comms
+    comms = []
+    for port in ports:
+        try:
+            s = serial.Serial(port)
+            s.close()
+            comms.append(port)
+        except (OSError, serial.SerialException):
+            pass
+    return comms
 
 
 def parse_time_to_numeric(value):
