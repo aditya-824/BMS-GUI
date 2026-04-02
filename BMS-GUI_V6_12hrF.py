@@ -35,6 +35,8 @@ I_ACTUAL_COL = 186
 N_ACTUAL_COL = 187
 T_MOTOR_COL = 188
 T_IGBT_COL = 189
+LEFT_RADIATOR_COL = 190
+RIGHT_RADIATOR_COL = 191
 I_ACTUAL_FLAG = True  # Flag to indicate if actual current data is present
 
 
@@ -92,7 +94,7 @@ def read_file(file_path, cells, temps, timestamp_col, SoC_col, VsBat_col, VsHV_c
     """
     indiv_cell_voltages = []  # List to store individual cell voltages
     indiv_cell_temps = []  # List to store individual cell temperatures
-    global timestamps, timestamps_numeric, SoC, VsBat, VsHV, curr, current_converted, num_rows, all_cell_voltages, all_cell_temps, i_actual, n_actual, t_motor, t_igbt, torque
+    global timestamps, timestamps_numeric, SoC, VsBat, VsHV, curr, current_converted, num_rows, all_cell_voltages, all_cell_temps, i_actual, n_actual, t_motor, t_igbt, torque, left_radiator_temps, right_radiator_temps
 
     # Read the CSV file, skipping the second line
     df = pd.read_csv(file_path, header=0, skiprows=[1])
@@ -137,6 +139,10 @@ def read_file(file_path, cells, temps, timestamp_col, SoC_col, VsBat_col, VsHV_c
     t_igbt = calc_igbt_temp(raw_t_igbt).tolist()
     # Convert current to Amperes
     current_converted = calc_curr(curr_arr).tolist()
+    left_radiator_temps = calc_radiator_temp(
+        df.iloc[:, LEFT_RADIATOR_COL-1].to_numpy(dtype=float, copy=False)).tolist()
+    right_radiator_temps = calc_radiator_temp(
+        df.iloc[:, RIGHT_RADIATOR_COL-1].to_numpy(dtype=float, copy=False)).tolist()
 
     new_cols = []
     for i in range(timestamp_col, LAST_CELL_DATA_COL, 4):
@@ -258,6 +264,18 @@ def calc_curr(raw_curr):
     voltage = raw_curr * 5.0 / 1023.0
     current = ((voltage - 2.4929) / 0.0057)
     return current
+
+
+def calc_radiator_temp(raw_radiator_temp):
+    """ Calculates radiator temperature from a raw sensor value.
+
+        :param raw_radiator_temp: Raw radiator temperature value.
+        :returns: Radiator temperature in Celsius.
+    """
+    raw_radiator_temp = np.asarray(raw_radiator_temp, dtype=float)
+    clamped = np.clip(raw_radiator_temp, 0.0, 5000.0)
+    radiator_temp = -55.0 + (clamped / 5000.0) * 180.0
+    return radiator_temp
 
 
 def calc_motor_temp(raw_motor_temp):
@@ -575,10 +593,39 @@ class BatteryManagementSystem:
         self.ca_get_button.grid(row=1, column=0, padx=5, pady=5)
         self.ca_result_label = ttk.Label(
             self.current_frame, text='Average Current (A):')
-        self.ca_result_label.grid(row=1, column=1, padx=5, pady=5, sticky='e')
+        self.ca_result_label.grid(row=1, column=3, padx=5, pady=5, sticky='e')
         self.ca_graph_button = ttk.Button(
             self.current_frame, text='Plot Current', command=plot_curr)
         self.ca_graph_button.grid(row=1, column=2, padx=5, pady=5)
+
+        def calculate_torque():
+            ain_scaled = float(self.torque_input.get(
+            )) * 4.2049283254560026117703544733168 / (float(self.i_max_pk_input.get()))
+            self.ain_scale_value.config(text=f'{ain_scaled:.4f}')
+
+        self.torque_calci_frame = ttk.LabelFrame(
+            self.settings_tab, text='Torque Calculation', padding=(10, 5))
+        self.torque_calci_frame.grid(
+            row=3, column=0, padx=10, pady=5, sticky='nw')
+        self.torque_label = ttk.Label(
+            self.torque_calci_frame, text='Torque (nm):')
+        self.torque_label.grid(row=0, column=0, padx=5, pady=5, sticky='e')
+        self.torque_input = ttk.Entry(self.torque_calci_frame, width=10)
+        self.torque_input.grid(row=0, column=1, padx=5, pady=5)
+        self.i_max_pk_label = ttk.Label(
+            self.torque_calci_frame, text='I_max_pk (A):')
+        self.i_max_pk_label.grid(row=0, column=2, padx=5, pady=5, sticky='e')
+        self.i_max_pk_input = ttk.Entry(self.torque_calci_frame, width=10)
+        self.i_max_pk_input.grid(row=0, column=3, padx=5, pady=5)
+        self.torque_calc_button = ttk.Button(
+            self.torque_calci_frame, text='Calculate A(in) Scale', command=calculate_torque)
+        self.torque_calc_button.grid(
+            row=1, column=0, padx=5, pady=5, sticky='w')
+        self.ain_scale_label = ttk.Label(
+            self.torque_calci_frame, text='A(in) Scale: ')
+        self.ain_scale_label.grid(row=1, column=1, padx=5, pady=5, sticky='e')
+        self.ain_scale_value = ttk.Label(self.torque_calci_frame, text='')
+        self.ain_scale_value.grid(row=1, column=2, padx=5, pady=5, sticky='w')
 
         # # Lap times frame
         # self.lap_frame = ttk.LabelFrame(self.settings_tab, text='Lap Times', padding=(10, 5))
@@ -967,6 +1014,12 @@ class BatteryManagementSystem:
         power = (np.asarray(total_pack_voltage_arr, dtype=float) *
                  np.asarray(current_converted, dtype=float) / 1000.0).tolist()
         overview_plots(1, 0, power, 'Power', 'kW')
+        # Left radiator temperature
+        overview_plots(2, 0, left_radiator_temps,
+                       'Left Radiator Temp.', '°C', 125, -55)
+        # Right radiator temperature
+        overview_plots(2, 1, right_radiator_temps,
+                       'Right Radiator Temp.', '°C', 125, -55)
 
         # Data & Stacks frame
         self.d_n_s_frame = ttk.Frame(self.overview_frame, padding=(10, 5))
@@ -1053,7 +1106,25 @@ class BatteryManagementSystem:
             self.stack_unit.grid(row=stack_index, column=2, padx=5, pady=5)
 
         # Filling motor controller tab
-        def motor_controller_plots(ro, col, data, title, unit, top_lim=None, bot_lim=None):
+        def plot_multi_data(x, y_series, labels, x_label, y_label, title):
+            """Plots multiple data series against the same x-axis."""
+            fig, ax = plt.subplots()
+            lines = []
+            for series, label in zip(y_series, labels):
+                line, = ax.plot(x, series, label=label)
+                lines.append(line)
+            ax.set_xlabel(x_label)
+            ax.set_ylabel(y_label)
+            ax.set_title(title)
+            ax.xaxis.set_major_locator(ticker.AutoLocator())
+            ax.xaxis.set_minor_locator(ticker.AutoLocator())
+            ax.grid(True)
+            ax.legend()
+            mplcursors.cursor(lines, hover=True)
+            plt.show()
+            plt.close(fig)
+
+        def motor_controller_plots(ro, col, data, title, unit, top_lim=None, bot_lim=None, data_labels=None):
             """ Creates a plot in the motor controller tab.
 
                 :param ro: Row index for the plot.
@@ -1066,7 +1137,22 @@ class BatteryManagementSystem:
             fig, ax = plt.subplots(figsize=(8, 6))
             canvas = FigureCanvasTkAgg(fig, master=sub_plot_frame)
             canvas.get_tk_widget().grid(row=0, column=0, padx=2, pady=2)
-            ax.plot(timestamps, data)
+            lines = []
+            is_multi_series = (
+                isinstance(data, list)
+                and len(data) > 0
+                and isinstance(data[0], (list, tuple, np.ndarray))
+            )
+            if is_multi_series:
+                labels = data_labels if data_labels else [
+                    f'Series {idx + 1}' for idx in range(len(data))]
+                for series, label in zip(data, labels):
+                    line, = ax.plot(timestamps, series, label=label)
+                    lines.append(line)
+                ax.legend()
+            else:
+                line, = ax.plot(timestamps, data)
+                lines.append(line)
             ax.set_xlabel('Time (hh:mm:ss.ms)')
             ax.set_ylabel(f'{title} ({unit})')
             ax.set_title(title)
@@ -1074,12 +1160,35 @@ class BatteryManagementSystem:
             ax.xaxis.set_major_locator(ticker.AutoLocator())
             ax.xaxis.set_minor_locator(ticker.AutoLocator())
             ax.grid(True)
-            mplcursors.cursor(hover=True)
+            mplcursors.cursor(lines, hover=True)
             canvas.draw()
             plt.close(fig)
+            if is_multi_series:
+                labels = data_labels if data_labels else [
+                    f'Series {idx + 1}' for idx in range(len(data))]
+
+                def expand_command(): return plot_multi_data(
+                    timestamps,
+                    data,
+                    labels,
+                    'Time (hh:mm:ss.ms)',
+                    f'{title} ({unit})',
+                    title,
+                )
+            else:
+                def expand_command(): return plot_data(
+                    timestamps,
+                    data,
+                    'Time (hh:mm:ss.ms)',
+                    f'{title} ({unit})',
+                    title,
+                    'show',
+                    '',
+                    top_lim,
+                    bot_lim,
+                )
             expand_button = ttk.Button(
-                sub_plot_frame, text='Expand', command=lambda: plot_data(
-                    timestamps, data, 'Time (hh:mm:ss.ms)', f'{title} ({unit})', title, 'show', top_lim, bot_lim))
+                sub_plot_frame, text='Expand', command=expand_command)
             expand_button.grid(row=1, column=0, padx=2, pady=8, sticky='new')
 
         motor_controller_plots(0, 0, n_actual, 'Actual Speed', 'RPM')
@@ -1088,6 +1197,8 @@ class BatteryManagementSystem:
         if (i_actual_flag):
             motor_controller_plots(1, 1, i_actual, 'Actual Current', 'A (rms)')
             motor_controller_plots(2, 0, torque, 'Torque', 'nm')
+            motor_controller_plots(2, 1, [n_actual, torque], 'Motor RPM and Torque',
+                                   'RPM / A (rms)', data_labels=['Motor RPM', 'Torque'],)
 
         # Get the file name from the path
         file_name = self.file_path.split('/')[-1]
